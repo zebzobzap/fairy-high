@@ -42,5 +42,5 @@ Open the deployed URL in Safari, use **Share → Add to Home Screen**, and enabl
 - Broken bridge interaction.
 - Fairy High gate and completion screen.
 - Keyboard and touch controls.
-- PWA manifest, home-screen icon and offline cache.
+- PWA manifest and offline cache.
 - No external JavaScript dependencies.
