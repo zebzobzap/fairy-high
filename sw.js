@@ -1,4 +1,4 @@
-const CACHE = 'fairy-high-v1';
+const CACHE = 'fairy-high-v2';
 const ASSETS = [
   './',
   './index.html',

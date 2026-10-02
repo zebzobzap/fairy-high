@@ -32,12 +32,12 @@ body {
 }
 
 .shell {
-  width: min(100vw, 980px);
-  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  width: min(100vw, 1180px);
+  padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
 }
 
 .game-card {
-  padding: 16px;
+  padding: 14px;
   border: 3px solid var(--border);
   border-radius: 20px;
   background: var(--panel);
@@ -54,10 +54,10 @@ body {
 
 h1 {
   margin: 0 0 5px;
-  font-size: clamp(1.25rem, 2vw, 2rem);
+  font-size: clamp(1.35rem, 2.2vw, 2.2rem);
 }
 
-p { margin: 0; color: var(--muted); }
+p { margin: 0; color: var(--muted); font-size: 1.02rem; }
 
 button {
   appearance: none;
@@ -94,14 +94,14 @@ button.is-held {
   border-radius: 10px;
   overflow: hidden;
   background: #74c76a;
+  width: 100%;
 }
 
 canvas {
   display: block;
-  width: min(100%, 960px);
+  width: min(100%, 1120px);
   aspect-ratio: 16 / 9;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+  image-rendering: auto;
   background: #83d272;
   touch-action: none;
 }
@@ -111,11 +111,12 @@ canvas {
   justify-content: space-between;
   gap: 12px;
   margin-top: 10px;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 2px dashed #caa989;
   border-radius: 14px;
   background: #fffdf6;
   font-weight: 700;
+  font-size: 1.06rem;
 }
 
 .touch-controls {
@@ -158,8 +159,8 @@ canvas {
 .controls {
   margin-top: 9px;
   color: var(--muted);
-  line-height: 1.4;
-  font-size: .94rem;
+  line-height: 1.45;
+  font-size: 1rem;
 }
 
 .mobile-note { margin-left: .5rem; }
@@ -179,12 +180,12 @@ kbd {
 }
 
 @media (max-width: 680px) {
-  .shell { padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left)); }
-  .game-card { padding: 10px; border-radius: 14px; }
+  .shell { padding: max(4px, env(safe-area-inset-top)) max(4px, env(safe-area-inset-right)) max(4px, env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left)); }
+  .game-card { padding: 8px; border-radius: 14px; }
   .topbar { align-items: center; margin-bottom: 8px; }
   .topbar p { display: none; }
-  .topbar button { padding: 7px 10px; }
-  .hud { flex-direction: column; gap: 3px; font-size: .9rem; }
+  .topbar button { padding: 8px 11px; }
+  .hud { flex-direction: column; gap: 4px; font-size: 1rem; }
   .controls { display: none; }
 }
 

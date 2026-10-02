@@ -9,8 +9,14 @@
   const interactButton = document.getElementById('interactButton');
   const moveButtons = [...document.querySelectorAll('[data-key]')];
 
-  const W = canvas.width;
-  const H = canvas.height;
+  const VIEW_SCALE = 2;
+  const W = 320;
+  const H = 180;
+  canvas.width = W * VIEW_SCALE;
+  canvas.height = H * VIEW_SCALE;
+  ctx.imageSmoothingEnabled = true;
+
+  const scaleValue = value => Math.round(value * VIEW_SCALE);
   const keys = new Set();
 
   const colours = {
@@ -219,22 +225,21 @@
 
   function drawRect(x, y, w, h, colour) {
     ctx.fillStyle = colour;
-    ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+    ctx.fillRect(scaleValue(x), scaleValue(y), Math.max(1, scaleValue(w)), Math.max(1, scaleValue(h)));
   }
 
-  function drawText(text, x, y, colour = colours.outline, align = 'left', size = 6) {
+  function drawText(text, x, y, colour = colours.outline, align = 'left', size = 7) {
     ctx.save();
-    ctx.font = `${size}px monospace`;
+    ctx.font = `${Math.max(10, scaleValue(size))}px monospace`;
     ctx.textAlign = align;
     ctx.textBaseline = 'top';
     ctx.fillStyle = colour;
-    ctx.fillText(text, Math.round(x), Math.round(y));
+    ctx.fillText(text, scaleValue(x), scaleValue(y));
     ctx.restore();
   }
 
   function drawGround() {
-    ctx.fillStyle = colours.grass;
-    ctx.fillRect(0, 0, W, H);
+    drawRect(0, 0, W, H, colours.grass);
 
     // Pixel grass texture.
     for (let i = 0; i < 170; i += 1) {
@@ -266,17 +271,17 @@
   function drawPathSegment(x1, y1, x2, y2, radius) {
     ctx.save();
     ctx.strokeStyle = colours.pathDark;
-    ctx.lineWidth = radius + 4;
+    ctx.lineWidth = scaleValue(radius + 4);
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
+    ctx.moveTo(scaleValue(x1), scaleValue(y1));
+    ctx.lineTo(scaleValue(x2), scaleValue(y2));
     ctx.stroke();
     ctx.strokeStyle = colours.path;
-    ctx.lineWidth = radius;
+    ctx.lineWidth = scaleValue(radius);
     ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
+    ctx.moveTo(scaleValue(x1), scaleValue(y1));
+    ctx.lineTo(scaleValue(x2), scaleValue(y2));
     ctx.stroke();
     ctx.restore();
   }
@@ -357,11 +362,12 @@
   function drawDialogue() {
     if (state.messageTimer <= 0 && !state.won) return;
     const text = state.message;
-    const lines = wrapText(text, 45);
-    const boxH = 13 + lines.length * 8;
-    drawRect(8, H - boxH - 7, W - 16, boxH, colours.outline);
-    drawRect(10, H - boxH - 9, W - 20, boxH, '#fff8ec');
-    lines.forEach((line, i) => drawText(line, 16, H - boxH - 4 + i * 8, colours.outline, 'left', 6));
+    const lines = wrapText(text, 40);
+    const lineHeight = 10;
+    const boxH = 16 + lines.length * lineHeight;
+    drawRect(8, H - boxH - 8, W - 16, boxH, colours.outline);
+    drawRect(10, H - boxH - 10, W - 20, boxH, '#fff8ec');
+    lines.forEach((line, i) => drawText(line, 16, H - boxH - 4 + i * lineHeight, colours.outline, 'left', 7));
   }
 
   function wrapText(text, max) {
@@ -516,7 +522,7 @@
   }
 
   function draw() {
-    ctx.clearRect(0, 0, W, H);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     drawGround();
     drawWorldObjects();
 
