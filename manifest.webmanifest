@@ -1,11 +1,11 @@
 {
-  "name": "Fairy High: Entry Challenge",
-  "short_name": "Fairy High",
-  "description": "A tiny top-down fairy adventure.",
+  "name": "Pixel Ball Racers",
+  "short_name": "Pixel Racers",
+  "description": "A simple top-down pixel racing game with throwable Power Balls.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f6ecdc",
-  "theme_color": "#b75562",
+  "background_color": "#dff3ff",
+  "theme_color": "#1f6ed4",
   "orientation": "any"
 }
