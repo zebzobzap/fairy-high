@@ -172,6 +172,7 @@ canvas {
 
 .steer-left,
 .steer-right {
+  min-width: 86px;
   min-height: 72px;
 }
 
