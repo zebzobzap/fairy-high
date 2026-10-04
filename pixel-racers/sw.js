@@ -1,4 +1,4 @@
-const CACHE = 'fairy-high-v3';
+const CACHE = 'pixel-ball-racers-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -16,7 +16,7 @@ self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys => Promise.all(
       keys
-        .filter(key => key.startsWith('fairy-high-') && key !== CACHE)
+        .filter(key => key.startsWith('pixel-ball-racers-') && key !== CACHE)
         .map(key => caches.delete(key))
     ))
   );
@@ -25,12 +25,6 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
-  const url = new URL(event.request.url);
-  const scopePath = new URL(self.registration.scope).pathname;
-
-  // Pixel Ball Racers has its own, narrower service-worker scope.
-  if (url.origin !== self.location.origin || url.pathname.startsWith(scopePath + 'pixel-racers/')) return;
-
   event.respondWith(
     caches.open(CACHE).then(cache =>
       cache.match(event.request).then(cached => cached || fetch(event.request).then(response => {

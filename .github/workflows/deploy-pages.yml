@@ -1,4 +1,4 @@
-name: Deploy Pixel Ball Racers to GitHub Pages
+name: Deploy Family Games to GitHub Pages
 
 on:
   push:
