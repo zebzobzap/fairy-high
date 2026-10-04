@@ -1,56 +1,31 @@
-# Pixel Ball Racers
+# Fairy High + Pixel Ball Racers
 
-A tiny browser MVP for a top-down kids racing game, adapted from the original Fairy High prototype.
+Two small browser games live side by side in this repository.
 
-## Game loop
+## Fairy High
 
-- One human player races against three NPC cars.
-- The game clock is six minutes.
-- The first minute is a warm-up race.
-- At 5:00 remaining, Power Balls appear around the circuit.
-- A racer can carry one ball at a time.
-- The player throws with Space or E. NPC racers can also throw at the player.
-- A successful hit makes the target car burst into pixels and pauses the whole race.
-- If the player is hit, the player chooses a replacement car.
-- If an NPC is hit, the NPC receives a replacement car automatically.
-- A 3-2-1 countdown restarts the race.
-- The timer is frozen while the race is paused.
-- Final score is laps completed plus successful hits.
+Fairy High remains the original top-down fairy game.
 
-## Play locally
-
-Open index.html in a browser. For full PWA/offline behaviour, serve the folder over HTTP instead of opening it as a file URL.
-
-Desktop controls:
-
-- Up arrow or W: accelerate
-- Down arrow or S: brake/reverse
-- Left/Right arrows or A/D: steer
-- Space or E: throw a Power Ball
-- Restart button: restart
-
-iPhone/iPad controls:
-
-- On-screen steering and pedals
-- THROW button
-
-## Deploy with GitHub Pages
-
-This repo includes .github/workflows/deploy-pages.yml.
-
-1. In GitHub: Settings -> Pages -> Build and deployment -> Source -> GitHub Actions.
-2. Push or merge to main.
-3. GitHub Actions deploys the game automatically.
-
-The project URL remains:
-
+Play:
 https://zebzobzap.github.io/fairy-high/
 
-## MVP architecture
+## Pixel Ball Racers
 
-- Plain HTML, CSS and JavaScript.
-- Canvas-rendered pixel graphics.
-- No external JavaScript dependencies.
+Pixel Ball Racers is a one-player racing game against NPC cars.
+
+Play:
+https://zebzobzap.github.io/fairy-high/pixel-racers/
+
+Current racing MVP:
+
+- One human player and three NPC racers.
+- Six-minute race: one-minute warm-up, then five minutes with Power Balls.
+- The player car cruises automatically with assisted steering and track-centering.
+- Only the human player can collect and throw Power Balls.
+- Hitting an NPC makes its car burst into pixels, pauses the race, replaces the NPC car and restarts with a 3-2-1 countdown.
 - Keyboard and touch controls.
-- PWA manifest and offline cache.
-- GitHub Pages deployment.
+- Separate PWA/offline caches for each game.
+
+## Deployment
+
+The GitHub Pages workflow deploys the entire repository from main, so both games are published together.
