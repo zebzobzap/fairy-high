@@ -241,6 +241,7 @@
       p.angle = trackTangent(track.t);
       p.speed = 28;
       p.offTrackTimer = 0;
+      p.lapTravel = Math.max(0, p.lapTravel - 0.75);
       setMessage('Back on track!', 1.1);
     }
 
