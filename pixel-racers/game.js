@@ -88,7 +88,18 @@
   function nearestTrackInfo(x, y) {
     const t = Math.atan2((y - TRACK.cy) / TRACK.ry, (x - TRACK.cx) / TRACK.rx);
     const p = trackPoint(t);
-    return { t, x: p.x, y: p.y, error: Math.hypot(x - p.x, y - p.y) };
+    const normal = trackNormal(t);
+    const dx = x - p.x;
+    const dy = y - p.y;
+    const signedOffset = dx * normal.x + dy * normal.y;
+    return {
+      t,
+      x: p.x,
+      y: p.y,
+      normal,
+      signedOffset,
+      error: Math.abs(signedOffset)
+    };
   }
 
   function makeNpc(index, progress) {
@@ -129,8 +140,8 @@
         x: playerPoint.x,
         y: playerPoint.y,
         angle: trackTangent(startT),
-        speed: 36,
-        offTrackTimer: 0,
+        speed: 38,
+        scraping: false,
         type: 0,
         hasBall: false,
         throwCooldown: 0,
@@ -211,38 +222,42 @@
     const left = keys.has('arrowleft') || keys.has('a');
     const right = keys.has('arrowright') || keys.has('d');
 
-    // Automatic acceleration, manual steering.
-    // The game never turns the car for the player while it is on the circuit.
-    const trackBeforeMove = nearestTrackInfo(p.x, p.y);
-    const onRoad = trackBeforeMove.error <= TRACK.halfWidth;
-    const targetSpeed = onRoad ? 36 : 22;
-    p.speed += (targetSpeed - p.speed) * Math.min(1, dt * 3.2);
+    const before = nearestTrackInfo(p.x, p.y);
+    const edgeRatio = clamp(before.error / TRACK.halfWidth, 0, 1);
+    const forwardAngle = trackTangent(before.t);
+    const forwardAlignment = Math.cos(wrapAngle(p.angle - forwardAngle));
 
-    const steerStrength = 2.15;
+    // Fastest on the centreline, slightly slower toward the edges.
+    // Pointing the wrong way is possible, but deliberately slow.
+    let targetSpeed = 39 - edgeRatio * 5;
+    if (forwardAlignment < 0) targetSpeed *= 0.48;
+    if (p.scraping) targetSpeed = Math.min(targetSpeed, 18);
+
+    p.speed += (targetSpeed - p.speed) * Math.min(1, dt * (p.scraping ? 7 : 3.4));
+
+    // Steering is fully manual. Lower speed means less turning authority,
+    // so scraping a wall cannot be used to spin the car around easily.
+    const steerStrength = 2.05 * clamp(p.speed / 39, 0.42, 1);
     if (left && !right) p.angle -= steerStrength * dt;
     if (right && !left) p.angle += steerStrength * dt;
 
-    p.x += Math.cos(p.angle) * p.speed * dt;
-    p.y += Math.sin(p.angle) * p.speed * dt;
+    const nextX = p.x + Math.cos(p.angle) * p.speed * dt;
+    const nextY = p.y + Math.sin(p.angle) * p.speed * dt;
+    const nextTrack = nearestTrackInfo(nextX, nextY);
+    const wallLimit = TRACK.halfWidth - 1.5;
 
-    const track = nearestTrackInfo(p.x, p.y);
-
-    if (track.error > TRACK.halfWidth) {
-      p.offTrackTimer += dt;
+    if (nextTrack.error <= wallLimit) {
+      p.x = nextX;
+      p.y = nextY;
+      p.scraping = false;
     } else {
-      p.offTrackTimer = 0;
-    }
-
-    // Recovery only: if the player gets well away from the circuit for long enough,
-    // put the car back on the nearest part of the track. This does not steer during racing.
-    if (track.error > TRACK.halfWidth + 24 && p.offTrackTimer > 1.15) {
-      p.x = track.x;
-      p.y = track.y;
-      p.angle = trackTangent(track.t);
-      p.speed = 28;
-      p.offTrackTimer = 0;
-      p.lapTravel = Math.max(0, p.lapTravel - 0.75);
-      setMessage('Back on track!', 1.1);
+      // Hard track boundary: keep the car inside and let its tangential
+      // movement slide along the wall while heavily reducing speed.
+      const side = nextTrack.signedOffset < 0 ? -1 : 1;
+      p.x = nextTrack.x + nextTrack.normal.x * wallLimit * side;
+      p.y = nextTrack.y + nextTrack.normal.y * wallLimit * side;
+      p.speed = Math.min(p.speed, 16);
+      p.scraping = true;
     }
 
     p.x = clamp(p.x, 4, W - 4);
@@ -250,15 +265,17 @@
 
     const currentTrack = nearestTrackInfo(p.x, p.y);
     const delta = wrapAngle(currentTrack.t - p.lastTrackAngle);
-    if (currentTrack.error < TRACK.halfWidth + 5 && Math.abs(delta) < 0.45) {
-      p.lapTravel += delta;
+
+    // Only count lap progress while travelling in the intended direction.
+    if (currentTrack.error <= wallLimit && delta > -0.08 && delta < 0.45) {
+      p.lapTravel += Math.max(0, delta);
       if (p.lapTravel >= Math.PI * 2) {
         p.lapTravel -= Math.PI * 2;
         p.laps += 1;
         setMessage('LAP ' + p.laps + '!', 1.5);
       }
-      if (p.lapTravel < -0.3) p.lapTravel = -0.3;
     }
+
     p.lastTrackAngle = currentTrack.t;
   }
 
@@ -353,8 +370,8 @@
 
   function choosePlayerCar(typeIndex) {
     state.player.type = typeIndex;
-    state.player.speed = 36;
-    state.player.offTrackTimer = 0;
+    state.player.speed = 38;
+    state.player.scraping = false;
     state.player.hasBall = false;
     state.player.knockedOut = false;
     garagePanel.hidden = true;
