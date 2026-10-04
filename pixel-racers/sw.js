@@ -1,4 +1,4 @@
-const CACHE = 'pixel-ball-racers-v2';
+const CACHE = 'pixel-ball-racers-v3';
 const ASSETS = [
   './',
   './index.html',
