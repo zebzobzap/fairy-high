@@ -141,6 +141,8 @@
         y: playerPoint.y,
         angle: trackTangent(startT),
         speed: 38,
+        trackT: startT,
+        laneOffset: 0,
         scraping: false,
         type: 0,
         hasBall: false,
@@ -222,52 +224,64 @@
     const left = keys.has('arrowleft') || keys.has('a');
     const right = keys.has('arrowright') || keys.has('d');
 
-    const before = nearestTrackInfo(p.x, p.y);
-    const edgeRatio = clamp(before.error / TRACK.halfWidth, 0, 1);
-    const forwardAngle = trackTangent(before.t);
+    const wallLimit = TRACK.halfWidth - 1.5;
+    const edgeRatio = clamp(Math.abs(p.laneOffset) / wallLimit, 0, 1);
+    const forwardAngle = trackTangent(p.trackT);
     const forwardAlignment = Math.cos(wrapAngle(p.angle - forwardAngle));
 
-    // Fastest on the centreline, slightly slower toward the edges.
-    // Pointing the wrong way is possible, but deliberately slow.
+    // Fastest on the centreline, slightly slower toward either edge.
+    // Wrong-way driving remains possible, but is deliberately slow.
     let targetSpeed = 39 - edgeRatio * 5;
     if (forwardAlignment < 0) targetSpeed *= 0.48;
     if (p.scraping) targetSpeed = Math.min(targetSpeed, 18);
 
     p.speed += (targetSpeed - p.speed) * Math.min(1, dt * (p.scraping ? 7 : 3.4));
 
-    // Steering is fully manual. Lower speed means less turning authority,
-    // so scraping a wall cannot be used to spin the car around easily.
+    // Steering is fully manual.
     const steerStrength = 2.05 * clamp(p.speed / 39, 0.42, 1);
     if (left && !right) p.angle -= steerStrength * dt;
     if (right && !left) p.angle += steerStrength * dt;
 
-    const nextX = p.x + Math.cos(p.angle) * p.speed * dt;
-    const nextY = p.y + Math.sin(p.angle) * p.speed * dt;
-    const nextTrack = nearestTrackInfo(nextX, nextY);
-    const wallLimit = TRACK.halfWidth - 1.5;
+    // Resolve motion in local track coordinates. This keeps wall contact continuous:
+    // longitudinal motion advances only along the nearby section of track, while
+    // lateral motion is clamped at the wall instead of being re-projected elsewhere.
+    const tangentAngle = trackTangent(p.trackT);
+    const tangentX = Math.cos(tangentAngle);
+    const tangentY = Math.sin(tangentAngle);
+    const normal = trackNormal(p.trackT);
+    const velocityX = Math.cos(p.angle) * p.speed;
+    const velocityY = Math.sin(p.angle) * p.speed;
 
-    if (nextTrack.error <= wallLimit) {
-      p.x = nextX;
-      p.y = nextY;
-      p.scraping = false;
-    } else {
-      // Hard track boundary: keep the car inside and let its tangential
-      // movement slide along the wall while heavily reducing speed.
-      const side = nextTrack.signedOffset < 0 ? -1 : 1;
-      p.x = nextTrack.x + nextTrack.normal.x * wallLimit * side;
-      p.y = nextTrack.y + nextTrack.normal.y * wallLimit * side;
+    const longitudinal = (velocityX * tangentX + velocityY * tangentY) * dt;
+    const lateral = (velocityX * normal.x + velocityY * normal.y) * dt;
+
+    const arcScale = Math.hypot(
+      TRACK.rx * Math.sin(p.trackT),
+      TRACK.ry * Math.cos(p.trackT)
+    ) || 1;
+
+    p.trackT += longitudinal / arcScale;
+
+    const requestedLane = p.laneOffset + lateral;
+    const hitWall = Math.abs(requestedLane) > wallLimit;
+    p.laneOffset = clamp(requestedLane, -wallLimit, wallLimit);
+
+    if (hitWall) {
       p.speed = Math.min(p.speed, 16);
       p.scraping = true;
+    } else {
+      p.scraping = false;
     }
 
-    p.x = clamp(p.x, 4, W - 4);
-    p.y = clamp(p.y, 4, H - 4);
+    const centre = trackPoint(p.trackT);
+    const placedNormal = trackNormal(p.trackT);
+    p.x = centre.x + placedNormal.x * p.laneOffset;
+    p.y = centre.y + placedNormal.y * p.laneOffset;
 
-    const currentTrack = nearestTrackInfo(p.x, p.y);
-    const delta = wrapAngle(currentTrack.t - p.lastTrackAngle);
+    const delta = wrapAngle(p.trackT - p.lastTrackAngle);
 
     // Only count lap progress while travelling in the intended direction.
-    if (currentTrack.error <= wallLimit && delta > -0.08 && delta < 0.45) {
+    if (delta > -0.08 && delta < 0.45) {
       p.lapTravel += Math.max(0, delta);
       if (p.lapTravel >= Math.PI * 2) {
         p.lapTravel -= Math.PI * 2;
@@ -276,7 +290,7 @@
       }
     }
 
-    p.lastTrackAngle = currentTrack.t;
+    p.lastTrackAngle = p.trackT;
   }
 
   function updateNpcs(dt) {
