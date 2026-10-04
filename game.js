@@ -97,7 +97,8 @@
       type: (index + 1) % CAR_TYPES.length,
       hasBall: false,
       throwCooldown: 2 + index,
-      bob: index
+      bob: index,
+      knockedOut: false
     };
   }
 
@@ -128,7 +129,8 @@
         laps: 0,
         hits: 0,
         lapTravel: 0,
-        lastTrackAngle: startT
+        lastTrackAngle: startT,
+        knockedOut: false
       },
       npcs: [
         makeNpc(0, startT - 0.22),
@@ -351,6 +353,7 @@
     state.player.type = typeIndex;
     state.player.speed = 0;
     state.player.hasBall = false;
+    state.player.knockedOut = false;
     garagePanel.hidden = true;
     state.pauseReason = 'New car ready.';
     state.countdown = 3;
@@ -362,11 +365,13 @@
     const current = npc.type;
     npc.type = (current + 1 + Math.floor(Math.random() * (CAR_TYPES.length - 1))) % CAR_TYPES.length;
     npc.hasBall = false;
+    npc.knockedOut = false;
     npc.throwCooldown = 2.5;
   }
 
   function registerHit(projectile, target) {
     burstCar(target);
+    target.knockedOut = true;
     state.projectiles = [];
 
     if (projectile.owner === 'player') {
@@ -732,8 +737,8 @@
     state.pickups.forEach(drawPickup);
 
     const racers = [
-      ...state.npcs.map(npc => ({ y: npc.y, draw: () => drawCar(npc, false) })),
-      { y: state.player.y, draw: () => drawCar(state.player, true) }
+      ...state.npcs.filter(npc => !npc.knockedOut).map(npc => ({ y: npc.y, draw: () => drawCar(npc, false) })),
+      ...(state.player.knockedOut ? [] : [{ y: state.player.y, draw: () => drawCar(state.player, true) }])
     ];
     racers.sort((a, b) => a.y - b.y).forEach(item => item.draw());
 
