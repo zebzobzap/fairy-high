@@ -1,4 +1,4 @@
-const CACHE = 'fairy-high-v2';
+const CACHE = 'pixel-ball-racers-v1';
 const ASSETS = [
   './',
   './index.html',

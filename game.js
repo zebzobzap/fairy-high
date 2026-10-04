@@ -6,537 +6,748 @@
   const questText = document.getElementById('questText');
   const statusText = document.getElementById('statusText');
   const restartButton = document.getElementById('restartButton');
-  const interactButton = document.getElementById('interactButton');
+  const throwButton = document.getElementById('throwButton');
   const moveButtons = [...document.querySelectorAll('[data-key]')];
+  const garagePanel = document.getElementById('garagePanel');
+  const garageChoices = document.getElementById('garageChoices');
 
-  const VIEW_SCALE = 2;
+  const SCALE = 2;
   const W = 320;
   const H = 180;
-  canvas.width = W * VIEW_SCALE;
-  canvas.height = H * VIEW_SCALE;
-  ctx.imageSmoothingEnabled = true;
-
-  const scaleValue = value => Math.round(value * VIEW_SCALE);
+  const TOTAL_TIME = 360;
+  const BALL_TIME = 300;
+  const TRACK = { cx: 160, cy: 90, rx: 116, ry: 61, halfWidth: 16 };
   const keys = new Set();
 
+  canvas.width = W * SCALE;
+  canvas.height = H * SCALE;
+  ctx.imageSmoothingEnabled = false;
+
   const colours = {
-    grass: '#82cd68',
-    grassDark: '#65b755',
-    grassLight: '#a4df7d',
-    path: '#e6cf99',
-    pathDark: '#c7a971',
-    river: '#5cb5e7',
-    riverDark: '#358bc7',
-    riverLight: '#a5e4ff',
-    bridge: '#9a6738',
-    bridgeDark: '#694223',
-    outline: '#3e2c28',
-    white: '#fff6e6',
-    cream: '#ffe4b0',
-    yellow: '#f6ca3b',
-    red: '#d94b3f',
-    redDark: '#9d2f34',
-    skin: '#ffd0a6',
-    blush: '#e78d8b',
-    hair: '#f4c75c',
-    hairDark: '#b97932',
-    wing: '#ffe9a6',
-    wingEdge: '#f3bf4c',
-    pink: '#ff7faf',
-    pinkDark: '#bb4b7c',
-    green: '#3f9d4f',
-    greenDark: '#266b35',
-    purple: '#9b72d2',
-    blue: '#547bce',
-    navy: '#203b65',
-    black: '#1f1b1a',
-    muted: '#7a5b4d'
+    grass: '#68bd54',
+    grassDark: '#4e9f41',
+    grassLight: '#8bd06d',
+    road: '#59616b',
+    roadDark: '#414852',
+    roadLight: '#717a85',
+    line: '#f8e7a7',
+    kerbA: '#fff3d1',
+    kerbB: '#e34b4b',
+    outline: '#1d2733',
+    white: '#fffaf0',
+    black: '#111820',
+    yellow: '#ffd441',
+    orange: '#f58a33',
+    blue: '#3f80e8',
+    red: '#e44646',
+    green: '#39a96b',
+    pink: '#e75ba7',
+    purple: '#8d62d8',
+    cyan: '#45c4d8',
+    dust: '#d7c58a'
   };
 
-  const initialState = () => ({
-    player: {
-      x: 39,
-      y: 132,
-      dir: 'down',
-      speed: 54,
-      bob: 0
-    },
-    friend: {
-      x: 116,
-      y: 103,
-      joined: false,
-      name: 'Pippa'
-    },
-    petals: [
-      { id: 1, x: 48, y: 72, taken: false },
-      { id: 2, x: 83, y: 137, taken: false },
-      { id: 3, x: 118, y: 45, taken: false }
-    ],
-    petalsCollected: 0,
-    bridgeRepaired: false,
-    won: false,
-    message: 'Welcome to the Entry Garden. Collect the glowing petals.',
-    messageTimer: 3.5,
-    time: 0
-  });
+  const CAR_TYPES = [
+    { name: 'Red Rocket', body: colours.red, stripe: '#ffd6d6' },
+    { name: 'Blue Buggy', body: colours.blue, stripe: '#cfe6ff' },
+    { name: 'Yellow Zapper', body: colours.yellow, stripe: '#fff7bf' },
+    { name: 'Green Machine', body: colours.green, stripe: '#c9f4dc' },
+    { name: 'Pink Popper', body: colours.pink, stripe: '#ffd7ef' },
+    { name: 'Purple Van', body: colours.purple, stripe: '#e6d7ff' }
+  ];
+
+  const NPC_NAMES = ['BEEP', 'ZOOM', 'BOP'];
+
+  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  const wrapAngle = value => {
+    let a = value;
+    while (a > Math.PI) a -= Math.PI * 2;
+    while (a < -Math.PI) a += Math.PI * 2;
+    return a;
+  };
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  function trackPoint(t) {
+    return {
+      x: TRACK.cx + Math.cos(t) * TRACK.rx,
+      y: TRACK.cy + Math.sin(t) * TRACK.ry
+    };
+  }
+
+  function trackTangent(t) {
+    return Math.atan2(TRACK.ry * Math.cos(t), -TRACK.rx * Math.sin(t));
+  }
+
+  function nearestTrackInfo(x, y) {
+    const t = Math.atan2((y - TRACK.cy) / TRACK.ry, (x - TRACK.cx) / TRACK.rx);
+    const p = trackPoint(t);
+    return { t, x: p.x, y: p.y, error: Math.hypot(x - p.x, y - p.y) };
+  }
+
+  function makeNpc(index, progress) {
+    const p = trackPoint(progress);
+    return {
+      id: 'npc-' + index,
+      name: NPC_NAMES[index],
+      x: p.x,
+      y: p.y,
+      angle: trackTangent(progress),
+      progress,
+      laps: 0,
+      type: (index + 1) % CAR_TYPES.length,
+      hasBall: false,
+      throwCooldown: 2 + index,
+      bob: index,
+      knockedOut: false
+    };
+  }
+
+  function initialState() {
+    const startT = -Math.PI / 2;
+    const playerPoint = trackPoint(startT);
+    return {
+      remaining: TOTAL_TIME,
+      time: 0,
+      ballPhaseStarted: false,
+      ended: false,
+      paused: false,
+      pauseReason: '',
+      pauseTimer: 0,
+      countdown: 0,
+      pendingNpc: null,
+      message: 'Warm-up lap. Power Balls unlock when the clock reaches 5:00.',
+      messageTimer: 5,
+      player: {
+        id: 'player',
+        x: playerPoint.x,
+        y: playerPoint.y,
+        angle: trackTangent(startT),
+        speed: 0,
+        type: 0,
+        hasBall: false,
+        throwCooldown: 0,
+        laps: 0,
+        hits: 0,
+        lapTravel: 0,
+        lastTrackAngle: startT,
+        knockedOut: false
+      },
+      npcs: [
+        makeNpc(0, startT - 0.22),
+        makeNpc(1, startT - 0.44),
+        makeNpc(2, startT - 0.66)
+      ],
+      pickups: [0.0, 1.05, 2.1, 3.15, 4.2, 5.25].map((t, index) => {
+        const p = trackPoint(t);
+        return { id: index, t, x: p.x, y: p.y, active: false, respawn: 0 };
+      }),
+      projectiles: [],
+      particles: []
+    };
+  }
 
   let state = initialState();
   let last = performance.now();
 
-  const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-  const near = (a, b, radius) => dist(a, b) <= radius;
-
-  function resetGame() {
-    state = initialState();
-    updateHud();
-  }
-
-  function setMessage(text, seconds = 3) {
+  function setMessage(text, seconds = 2.5) {
     state.message = text;
     state.messageTimer = seconds;
   }
 
-  function updateHud() {
-    statusText.textContent = `Petals: ${state.petalsCollected} / 3`;
+  function formatTime(seconds) {
+    const safe = Math.max(0, Math.ceil(seconds));
+    const mins = Math.floor(safe / 60);
+    const secs = safe % 60;
+    return mins + ':' + String(secs).padStart(2, '0');
+  }
 
-    if (state.won) {
-      questText.textContent = 'Quest complete: welcome to Fairy High.';
-    } else if (!state.bridgeRepaired && state.petalsCollected < 3) {
-      questText.textContent = 'Quest: collect 3 glowing petals.';
-    } else if (!state.bridgeRepaired) {
-      questText.textContent = 'Quest: press E at the broken bridge.';
+  function updateHud() {
+    if (state.ended) {
+      questText.textContent = 'Race finished.';
+    } else if (state.paused) {
+      questText.textContent = state.pauseReason || 'Race paused.';
+    } else if (!state.ballPhaseStarted) {
+      questText.textContent = 'Warm-up: Power Balls unlock at 5:00.';
     } else {
-      questText.textContent = 'Quest: cross the bridge and press E at the Fairy High gate.';
+      questText.textContent = 'Power Ball race: collect, throw, race.';
+    }
+
+    statusText.textContent =
+      'Time: ' + formatTime(state.remaining) +
+      ' · Laps: ' + state.player.laps +
+      ' · Hits: ' + state.player.hits +
+      ' · Ball: ' + (state.player.hasBall ? 'READY' : '—');
+  }
+
+  function resetGame() {
+    state = initialState();
+    garagePanel.hidden = true;
+    garageChoices.innerHTML = '';
+    keys.clear();
+    updateHud();
+  }
+
+  function activateBalls() {
+    state.ballPhaseStarted = true;
+    state.pickups.forEach(p => {
+      p.active = true;
+      p.respawn = 0;
+    });
+    setMessage('POWER BALLS UNLOCKED! Grab one and press THROW.', 4);
+  }
+
+  function updatePlayer(dt) {
+    const p = state.player;
+    p.throwCooldown = Math.max(0, p.throwCooldown - dt);
+
+    const accelerating = keys.has('arrowup') || keys.has('w');
+    const braking = keys.has('arrowdown') || keys.has('s');
+    const left = keys.has('arrowleft') || keys.has('a');
+    const right = keys.has('arrowright') || keys.has('d');
+
+    if (accelerating) p.speed += 46 * dt;
+    else p.speed -= 18 * dt;
+
+    if (braking) p.speed -= 55 * dt;
+    p.speed = clamp(p.speed, -13, 49);
+
+    const steerStrength = 2.1 * clamp(Math.abs(p.speed) / 24, 0.35, 1);
+    if (left) p.angle -= steerStrength * dt * (p.speed >= 0 ? 1 : -1);
+    if (right) p.angle += steerStrength * dt * (p.speed >= 0 ? 1 : -1);
+
+    p.x += Math.cos(p.angle) * p.speed * dt;
+    p.y += Math.sin(p.angle) * p.speed * dt;
+
+    const track = nearestTrackInfo(p.x, p.y);
+    if (track.error > TRACK.halfWidth) {
+      p.speed *= Math.pow(0.24, dt);
+      const nudge = clamp((track.error - TRACK.halfWidth) * 0.9 * dt, 0, 0.28);
+      p.x += (track.x - p.x) * nudge;
+      p.y += (track.y - p.y) * nudge;
+    }
+    if (track.error > TRACK.halfWidth + 18) {
+      p.x += (track.x - p.x) * Math.min(1, dt * 3);
+      p.y += (track.y - p.y) * Math.min(1, dt * 3);
+    }
+
+    p.x = clamp(p.x, 4, W - 4);
+    p.y = clamp(p.y, 4, H - 4);
+
+    const currentTrackAngle = nearestTrackInfo(p.x, p.y).t;
+    const delta = wrapAngle(currentTrackAngle - p.lastTrackAngle);
+    if (Math.abs(delta) < 0.45) {
+      p.lapTravel += delta;
+      if (p.lapTravel >= Math.PI * 2) {
+        p.lapTravel -= Math.PI * 2;
+        p.laps += 1;
+        setMessage('LAP ' + p.laps + '!', 1.5);
+      }
+      if (p.lapTravel < -0.3) p.lapTravel = -0.3;
+    }
+    p.lastTrackAngle = currentTrackAngle;
+  }
+
+  function updateNpcs(dt) {
+    state.npcs.forEach((npc, index) => {
+      npc.throwCooldown = Math.max(0, npc.throwCooldown - dt);
+      const previousLap = Math.floor((npc.progress + Math.PI / 2) / (Math.PI * 2));
+      const pace = 0.29 + index * 0.013 + Math.sin(state.time * 0.45 + index) * 0.008;
+      npc.progress += pace * dt;
+      const currentLap = Math.floor((npc.progress + Math.PI / 2) / (Math.PI * 2));
+      if (currentLap > previousLap) npc.laps += currentLap - previousLap;
+
+      const p = trackPoint(npc.progress);
+      npc.x = p.x;
+      npc.y = p.y;
+      npc.angle = trackTangent(npc.progress);
+      npc.bob += dt * 6;
+
+      if (state.ballPhaseStarted && npc.hasBall && npc.throwCooldown <= 0) {
+        const d = dist(npc, state.player);
+        if (d < 74 && Math.random() < dt * 2.2) {
+          throwBall(npc);
+          npc.throwCooldown = 4 + Math.random() * 3;
+        }
+      }
+    });
+  }
+
+  function updatePickups(dt) {
+    if (!state.ballPhaseStarted) return;
+
+    state.pickups.forEach(pickup => {
+      if (!pickup.active) {
+        pickup.respawn -= dt;
+        if (pickup.respawn <= 0) pickup.active = true;
+        return;
+      }
+
+      const racers = [state.player, ...state.npcs];
+      for (const racer of racers) {
+        if (!racer.hasBall && dist(racer, pickup) < 9) {
+          racer.hasBall = true;
+          pickup.active = false;
+          pickup.respawn = 5.5;
+          if (racer.id === 'player') setMessage('BALL READY — press THROW!', 2);
+          break;
+        }
+      }
+    });
+  }
+
+  function throwBall(racer) {
+    if (!state.ballPhaseStarted || !racer.hasBall || racer.throwCooldown > 0 || state.paused || state.ended) return;
+    racer.hasBall = false;
+    racer.throwCooldown = 0.45;
+
+    let angle = racer.angle;
+    if (racer.id !== 'player') {
+      const targetAngle = Math.atan2(state.player.y - racer.y, state.player.x - racer.x);
+      angle = targetAngle;
+    }
+
+    state.projectiles.push({
+      owner: racer.id,
+      x: racer.x + Math.cos(angle) * 9,
+      y: racer.y + Math.sin(angle) * 9,
+      vx: Math.cos(angle) * 88,
+      vy: Math.sin(angle) * 88,
+      life: 1.7
+    });
+
+    if (racer.id === 'player') setMessage('THROW!', 0.7);
+    updateHud();
+  }
+
+  function burstCar(racer) {
+    const car = CAR_TYPES[racer.type];
+    for (let i = 0; i < 18; i += 1) {
+      const a = (Math.PI * 2 * i) / 18;
+      const speed = 18 + (i % 5) * 5;
+      state.particles.push({
+        x: racer.x,
+        y: racer.y,
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed,
+        life: 0.8 + (i % 4) * 0.08,
+        colour: i % 3 === 0 ? car.stripe : car.body
+      });
     }
   }
 
-  function canStandAt(x, y) {
-    if (x < 8 || x > W - 8 || y < 17 || y > H - 10) return false;
+  function showPlayerGarage() {
+    garageChoices.innerHTML = '';
+    const current = state.player.type;
+    const options = [1, 2, 3].map(offset => (current + offset) % CAR_TYPES.length);
+    options.forEach(typeIndex => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = CAR_TYPES[typeIndex].name;
+      button.addEventListener('click', () => choosePlayerCar(typeIndex));
+      garageChoices.appendChild(button);
+    });
+    garagePanel.hidden = false;
+  }
 
-    const inRiver = x > 144 && x < 166;
-    const atBridgeGap = y > 83 && y < 112;
-    if (inRiver && !(state.bridgeRepaired && atBridgeGap)) return false;
+  function choosePlayerCar(typeIndex) {
+    state.player.type = typeIndex;
+    state.player.speed = 0;
+    state.player.hasBall = false;
+    state.player.knockedOut = false;
+    garagePanel.hidden = true;
+    state.pauseReason = 'New car ready.';
+    state.countdown = 3;
+    setMessage('New car ready. 3… 2… 1… GO!', 3.5);
+    updateHud();
+  }
 
-    const treeColliders = [
-      { x: 28, y: 38, r: 11 },
-      { x: 96, y: 24, r: 10 },
-      { x: 40, y: 160, r: 11 },
-      { x: 236, y: 31, r: 10 },
-      { x: 294, y: 152, r: 13 }
-    ];
+  function replaceNpc(npc) {
+    const current = npc.type;
+    npc.type = (current + 1 + Math.floor(Math.random() * (CAR_TYPES.length - 1))) % CAR_TYPES.length;
+    npc.hasBall = false;
+    npc.knockedOut = false;
+    npc.throwCooldown = 2.5;
+  }
 
-    return treeColliders.every(tree => Math.hypot(x - tree.x, y - tree.y) > tree.r);
+  function registerHit(projectile, target) {
+    burstCar(target);
+    target.knockedOut = true;
+    state.projectiles = [];
+
+    if (projectile.owner === 'player') {
+      state.player.hits += 1;
+    }
+
+    state.paused = true;
+
+    if (target.id === 'player') {
+      state.pauseReason = 'Your car was bonked. Pick a replacement.';
+      state.player.speed = 0;
+      showPlayerGarage();
+      setMessage('POP! Pick a new car.', 99);
+    } else {
+      state.pendingNpc = target.id;
+      state.pauseTimer = 1.15;
+      state.pauseReason = target.name + ' was bonked. New car incoming.';
+      setMessage('POP! ' + target.name + ' needs a new car.', 2.8);
+    }
+
+    updateHud();
+  }
+
+  function updateProjectiles(dt) {
+    for (let i = state.projectiles.length - 1; i >= 0; i -= 1) {
+      const ball = state.projectiles[i];
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+      ball.life -= dt;
+
+      if (ball.life <= 0 || ball.x < -5 || ball.x > W + 5 || ball.y < -5 || ball.y > H + 5) {
+        state.projectiles.splice(i, 1);
+        continue;
+      }
+
+      const candidates = ball.owner === 'player'
+        ? state.npcs
+        : [state.player];
+
+      const target = candidates.find(racer => dist(ball, racer) < 8);
+      if (target) {
+        registerHit(ball, target);
+        break;
+      }
+    }
+  }
+
+  function updateParticles(dt) {
+    state.particles.forEach(p => {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= Math.pow(0.08, dt);
+      p.vy *= Math.pow(0.08, dt);
+      p.life -= dt;
+    });
+    state.particles = state.particles.filter(p => p.life > 0);
+  }
+
+  function updatePause(dt) {
+    updateParticles(dt);
+
+    if (state.pauseTimer > 0) {
+      state.pauseTimer -= dt;
+      if (state.pauseTimer <= 0 && state.pendingNpc) {
+        const npc = state.npcs.find(r => r.id === state.pendingNpc);
+        if (npc) replaceNpc(npc);
+        state.pendingNpc = null;
+        state.countdown = 3;
+        state.pauseReason = 'New car ready.';
+      }
+      updateHud();
+      return;
+    }
+
+    if (state.countdown > 0) {
+      state.countdown -= dt;
+      if (state.countdown <= 0) {
+        state.countdown = 0;
+        state.paused = false;
+        state.pauseReason = '';
+        state.messageTimer = 0;
+        setMessage('GO!', 0.7);
+      }
+      updateHud();
+    }
   }
 
   function update(dt) {
     state.time += dt;
-    if (state.messageTimer > 0) state.messageTimer -= dt;
+    if (state.messageTimer > 0 && state.messageTimer < 90) state.messageTimer -= dt;
 
-    if (state.won) return;
-
-    const player = state.player;
-    let dx = 0;
-    let dy = 0;
-
-    if (keys.has('arrowleft') || keys.has('a')) dx -= 1;
-    if (keys.has('arrowright') || keys.has('d')) dx += 1;
-    if (keys.has('arrowup') || keys.has('w')) dy -= 1;
-    if (keys.has('arrowdown') || keys.has('s')) dy += 1;
-
-    if (dx !== 0 || dy !== 0) {
-      const len = Math.hypot(dx, dy);
-      dx /= len;
-      dy /= len;
-      if (Math.abs(dx) > Math.abs(dy)) player.dir = dx < 0 ? 'left' : 'right';
-      else player.dir = dy < 0 ? 'up' : 'down';
-      player.bob += dt * 12;
+    if (state.ended) {
+      updateParticles(dt);
+      return;
     }
 
-    const nx = player.x + dx * player.speed * dt;
-    const ny = player.y + dy * player.speed * dt;
-
-    if (canStandAt(nx, player.y)) player.x = nx;
-    if (canStandAt(player.x, ny)) player.y = ny;
-    player.x = clamp(player.x, 8, W - 8);
-    player.y = clamp(player.y, 17, H - 10);
-
-    for (const petal of state.petals) {
-      if (!petal.taken && near(player, petal, 9)) {
-        petal.taken = true;
-        state.petalsCollected += 1;
-        setMessage(`You found a glowing petal. ${state.petalsCollected} of 3 collected.`, 2.2);
-        updateHud();
-      }
+    if (state.paused) {
+      updatePause(dt);
+      return;
     }
 
-    if (state.bridgeRepaired && state.friend.joined) {
-      const followX = player.x - (player.dir === 'left' ? -13 : player.dir === 'right' ? 13 : 0);
-      const followY = player.y + 15;
-      state.friend.x += (followX - state.friend.x) * Math.min(1, dt * 3);
-      state.friend.y += (followY - state.friend.y) * Math.min(1, dt * 3);
+    state.remaining = Math.max(0, state.remaining - dt);
+    if (!state.ballPhaseStarted && state.remaining <= BALL_TIME) activateBalls();
+
+    if (state.remaining <= 0) {
+      state.ended = true;
+      state.player.speed = 0;
+      state.projectiles = [];
+      setMessage('FINISH!', 99);
+      updateHud();
+      return;
+    }
+
+    updatePlayer(dt);
+    updateNpcs(dt);
+    updatePickups(dt);
+    updateProjectiles(dt);
+    updateParticles(dt);
+    updateHud();
+  }
+
+  function drawGrass() {
+    ctx.fillStyle = colours.grass;
+    ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < 180; i += 1) {
+      const x = (i * 47 + 11) % W;
+      const y = (i * 29 + 7) % H;
+      ctx.fillStyle = i % 4 === 0 ? colours.grassLight : colours.grassDark;
+      ctx.fillRect(x, y, 1, i % 3 === 0 ? 2 : 1);
+    }
+
+    ctx.fillStyle = '#79c4ed';
+    ctx.fillRect(136, 72, 48, 36);
+    ctx.fillStyle = '#aee3ff';
+    for (let y = 76; y < 106; y += 8) ctx.fillRect(141, y, 15, 1);
+
+    ctx.fillStyle = '#4c8f43';
+    ctx.fillRect(18, 20, 21, 10);
+    ctx.fillRect(281, 145, 22, 9);
+    ctx.fillStyle = '#2f6f35';
+    ctx.fillRect(22, 17, 13, 12);
+    ctx.fillRect(286, 141, 13, 12);
+  }
+
+  function strokeEllipse(colour, width) {
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.ellipse(TRACK.cx, TRACK.cy, TRACK.rx, TRACK.ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  function drawTrack() {
+    strokeEllipse(colours.roadDark, 39);
+    strokeEllipse(colours.road, 34);
+    strokeEllipse(colours.roadLight, 2);
+
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 32; i += 1) {
+      const t1 = (Math.PI * 2 * i) / 32;
+      const t2 = t1 + 0.09;
+      ctx.strokeStyle = i % 2 === 0 ? colours.kerbA : colours.kerbB;
+      ctx.beginPath();
+      const outer1 = {
+        x: TRACK.cx + Math.cos(t1) * (TRACK.rx + 17),
+        y: TRACK.cy + Math.sin(t1) * (TRACK.ry + 17)
+      };
+      const outer2 = {
+        x: TRACK.cx + Math.cos(t2) * (TRACK.rx + 17),
+        y: TRACK.cy + Math.sin(t2) * (TRACK.ry + 17)
+      };
+      ctx.moveTo(outer1.x, outer1.y);
+      ctx.lineTo(outer2.x, outer2.y);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = colours.line;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.ellipse(TRACK.cx, TRACK.cy, TRACK.rx, TRACK.ry, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = colours.white;
+    ctx.fillRect(156, 11, 8, 2);
+    ctx.fillStyle = colours.black;
+    for (let x = 156; x < 164; x += 2) {
+      if ((x / 2) % 2 === 0) ctx.fillRect(x, 11, 2, 2);
+    }
+
+    ctx.fillStyle = '#f5ca45';
+    ctx.fillRect(145, 78, 30, 18);
+    ctx.fillStyle = '#c68e23';
+    ctx.fillRect(149, 82, 22, 10);
+    drawText('PIXEL', 160, 83, colours.outline, 'center', 5);
+    drawText('CITY', 160, 89, colours.outline, 'center', 5);
+  }
+
+  function drawPickup(pickup) {
+    if (!state.ballPhaseStarted || !pickup.active) return;
+    const pulse = 1 + Math.sin(state.time * 7 + pickup.id) * 0.7;
+    ctx.fillStyle = 'rgba(255, 244, 128, .35)';
+    ctx.fillRect(pickup.x - 6, pickup.y - 6, 12, 12);
+    ctx.fillStyle = colours.outline;
+    ctx.fillRect(pickup.x - 3, pickup.y - 3 + pulse, 6, 6);
+    ctx.fillStyle = colours.yellow;
+    ctx.fillRect(pickup.x - 2, pickup.y - 4 + pulse, 4, 6);
+    ctx.fillStyle = colours.white;
+    ctx.fillRect(pickup.x - 1, pickup.y - 3 + pulse, 2, 2);
+  }
+
+  function drawCar(racer, isPlayer = false) {
+    const car = CAR_TYPES[racer.type];
+    ctx.save();
+    ctx.translate(Math.round(racer.x), Math.round(racer.y));
+    ctx.rotate(racer.angle);
+
+    ctx.fillStyle = 'rgba(0,0,0,.22)';
+    ctx.fillRect(-6, -4, 13, 9);
+
+    ctx.fillStyle = colours.outline;
+    ctx.fillRect(-7, -4, 14, 8);
+    ctx.fillStyle = car.body;
+    ctx.fillRect(-6, -3, 12, 6);
+
+    ctx.fillStyle = colours.black;
+    ctx.fillRect(-4, -5, 4, 2);
+    ctx.fillRect(2, -5, 4, 2);
+    ctx.fillRect(-4, 3, 4, 2);
+    ctx.fillRect(2, 3, 4, 2);
+
+    ctx.fillStyle = car.stripe;
+    ctx.fillRect(-2, -3, 5, 6);
+    ctx.fillStyle = '#aee4ff';
+    ctx.fillRect(0, -2, 3, 4);
+    ctx.fillStyle = colours.white;
+    ctx.fillRect(5, -2, 1, 1);
+    ctx.fillRect(5, 1, 1, 1);
+
+    if (isPlayer) {
+      ctx.strokeStyle = colours.yellow;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-8, -5, 16, 10);
+    }
+
+    ctx.restore();
+
+    if (racer.hasBall) {
+      ctx.fillStyle = colours.yellow;
+      ctx.fillRect(Math.round(racer.x) - 2, Math.round(racer.y) - 11, 4, 4);
+      ctx.fillStyle = colours.white;
+      ctx.fillRect(Math.round(racer.x) - 1, Math.round(racer.y) - 11, 1, 1);
     }
   }
 
-  function interact() {
-    if (state.won) {
-      resetGame();
-      return;
-    }
-
-    const p = state.player;
-    const bridge = { x: 155, y: 97 };
-    const gate = { x: 284, y: 88 };
-
-    if (near(p, state.friend, 18) && !state.friend.joined) {
-      if (state.petalsCollected < 3) {
-        setMessage('Pippa: The bridge is broken. Three glowing petals can mend it.', 3.5);
-      } else {
-        setMessage('Pippa: That should be enough magic. Let’s fix the bridge.', 3);
-      }
-      return;
-    }
-
-    if (near(p, bridge, 18) && !state.bridgeRepaired) {
-      if (state.petalsCollected >= 3) {
-        state.bridgeRepaired = true;
-        state.friend.joined = true;
-        setMessage('The petals sparkle. The bridge repairs itself. Pippa joins you.', 4);
-        updateHud();
-      } else {
-        setMessage('The bridge needs three glowing petals before it can be repaired.', 3);
-      }
-      return;
-    }
-
-    if (near(p, gate, 18)) {
-      if (state.bridgeRepaired) {
-        state.won = true;
-        setMessage('Welcome to Fairy High. Your mushroom dorm is ready.', 8);
-        updateHud();
-      } else {
-        setMessage('The Fairy High gate is across the river. Repair the bridge first.', 3);
-      }
-      return;
-    }
-
-    setMessage('Nothing to use here yet.', 1.4);
+  function drawProjectiles() {
+    state.projectiles.forEach(ball => {
+      ctx.fillStyle = colours.outline;
+      ctx.fillRect(Math.round(ball.x) - 3, Math.round(ball.y) - 3, 6, 6);
+      ctx.fillStyle = colours.yellow;
+      ctx.fillRect(Math.round(ball.x) - 2, Math.round(ball.y) - 2, 4, 4);
+      ctx.fillStyle = colours.white;
+      ctx.fillRect(Math.round(ball.x) - 1, Math.round(ball.y) - 1, 1, 1);
+    });
   }
 
-  function drawRect(x, y, w, h, colour) {
-    ctx.fillStyle = colour;
-    ctx.fillRect(scaleValue(x), scaleValue(y), Math.max(1, scaleValue(w)), Math.max(1, scaleValue(h)));
+  function drawParticles() {
+    state.particles.forEach(p => {
+      ctx.globalAlpha = clamp(p.life / 0.8, 0, 1);
+      ctx.fillStyle = p.colour;
+      ctx.fillRect(Math.round(p.x), Math.round(p.y), 2, 2);
+    });
+    ctx.globalAlpha = 1;
   }
 
   function drawText(text, x, y, colour = colours.outline, align = 'left', size = 7) {
     ctx.save();
-    ctx.font = `${Math.max(10, scaleValue(size))}px monospace`;
+    ctx.font = 'bold ' + size + 'px monospace';
     ctx.textAlign = align;
     ctx.textBaseline = 'top';
     ctx.fillStyle = colour;
-    ctx.fillText(text, scaleValue(x), scaleValue(y));
+    ctx.fillText(text, x, y);
     ctx.restore();
   }
 
-  function drawGround() {
-    drawRect(0, 0, W, H, colours.grass);
-
-    // Pixel grass texture.
-    for (let i = 0; i < 170; i += 1) {
-      const x = (i * 47 + 13) % W;
-      const y = (i * 31 + 19) % H;
-      const c = i % 3 === 0 ? colours.grassLight : colours.grassDark;
-      drawRect(x, y, 1, 2, c);
-    }
-
-    // Path: start to bridge and bridge to gate.
-    drawPathSegment(18, 132, 130, 97, 18);
-    drawPathSegment(169, 97, 285, 89, 18);
-    drawPathSegment(278, 89, 302, 72, 16);
-
-    // River.
-    drawRect(145, 0, 21, H, colours.riverDark);
-    drawRect(148, 0, 16, H, colours.river);
-    for (let y = 4; y < H; y += 16) {
-      drawRect(151, y, 7, 2, colours.riverLight);
-      drawRect(158, y + 7, 4, 1, colours.riverLight);
-    }
-
-    drawBridge();
-
-    // Fairy High side glow.
-    drawRect(248, 61, 58, 48, 'rgba(255, 242, 173, .35)');
-  }
-
-  function drawPathSegment(x1, y1, x2, y2, radius) {
-    ctx.save();
-    ctx.strokeStyle = colours.pathDark;
-    ctx.lineWidth = scaleValue(radius + 4);
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(scaleValue(x1), scaleValue(y1));
-    ctx.lineTo(scaleValue(x2), scaleValue(y2));
-    ctx.stroke();
-    ctx.strokeStyle = colours.path;
-    ctx.lineWidth = scaleValue(radius);
-    ctx.beginPath();
-    ctx.moveTo(scaleValue(x1), scaleValue(y1));
-    ctx.lineTo(scaleValue(x2), scaleValue(y2));
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  function drawBridge() {
-    if (state.bridgeRepaired) {
-      drawRect(139, 87, 32, 22, colours.bridgeDark);
-      for (let x = 140; x <= 166; x += 6) drawRect(x, 88, 4, 20, colours.bridge);
-      drawRect(138, 91, 34, 2, colours.cream);
-      drawRect(138, 103, 34, 2, colours.cream);
-      return;
-    }
-
-    drawRect(137, 90, 10, 18, colours.bridgeDark);
-    drawRect(137, 90, 8, 4, colours.bridge);
-    drawRect(137, 101, 8, 4, colours.bridge);
-    drawRect(165, 90, 10, 18, colours.bridgeDark);
-    drawRect(167, 90, 8, 4, colours.bridge);
-    drawRect(167, 101, 8, 4, colours.bridge);
-  }
-
-  function drawTree(x, y, kind = 0) {
-    drawRect(x - 3, y + 7, 6, 8, '#7b4a27');
-    const c1 = kind ? '#4d9d44' : '#3e8c3c';
-    const c2 = kind ? '#6bb65a' : '#55a84b';
-    drawRect(x - 10, y - 4, 20, 11, colours.outline);
-    drawRect(x - 9, y - 5, 18, 10, c1);
-    drawRect(x - 14, y + 2, 28, 12, colours.outline);
-    drawRect(x - 13, y + 1, 26, 11, c2);
-    drawRect(x - 8, y + 10, 16, 8, colours.outline);
-    drawRect(x - 7, y + 9, 14, 7, c1);
-  }
-
-  function drawMushroomDorm(x, y, tint = 'red') {
-    const cap = tint === 'blue' ? colours.blue : tint === 'purple' ? colours.purple : colours.red;
-    drawRect(x - 10, y - 10, 20, 9, colours.outline);
-    drawRect(x - 9, y - 12, 18, 11, cap);
-    drawRect(x - 15, y - 4, 30, 10, colours.outline);
-    drawRect(x - 14, y - 6, 28, 10, cap);
-    drawRect(x - 10, y + 4, 20, 18, colours.outline);
-    drawRect(x - 9, y + 3, 18, 18, '#f6d9a9');
-    drawRect(x - 3, y + 12, 6, 9, '#75503a');
-    drawRect(x - 12, y - 2, 4, 3, colours.white);
-    drawRect(x - 2, y - 8, 4, 3, colours.white);
-    drawRect(x + 6, y - 3, 5, 3, colours.white);
-  }
-
-  function drawGate() {
-    const x = 284;
-    const y = 76;
-    drawRect(x - 22, y - 7, 44, 5, colours.outline);
-    drawRect(x - 21, y - 8, 42, 5, colours.redDark);
-    drawRect(x - 18, y - 17, 6, 38, colours.outline);
-    drawRect(x - 17, y - 16, 4, 36, '#805331');
-    drawRect(x + 12, y - 17, 6, 38, colours.outline);
-    drawRect(x + 13, y - 16, 4, 36, '#805331');
-    drawRect(x - 15, y - 16, 30, 10, colours.outline);
-    drawRect(x - 14, y - 17, 28, 10, '#ffe0a7');
-    drawText('FAIRY', x, y - 15, colours.redDark, 'center', 5);
-    drawText('HIGH', x, y - 9, colours.redDark, 'center', 5);
-    drawRect(x - 7, y + 13, 14, 8, '#cb9a60');
-  }
-
-  function drawPetal(petal) {
-    if (petal.taken) return;
-    const pulse = Math.sin(state.time * 6 + petal.id) * 1.2;
-    const x = petal.x;
-    const y = petal.y + pulse;
-    drawRect(x - 1, y - 7, 3, 3, '#fff6bc');
-    drawRect(x - 3, y - 5, 7, 7, colours.pinkDark);
-    drawRect(x - 2, y - 6, 5, 8, colours.pink);
-    drawRect(x, y - 2, 2, 2, colours.white);
-    drawRect(x - 5, y - 8, 1, 1, '#fff6bc');
-    drawRect(x + 5, y - 4, 1, 1, '#fff6bc');
-    drawRect(x + 3, y + 4, 1, 1, '#fff6bc');
-  }
-
-  function drawDialogue() {
-    if (state.messageTimer <= 0 && !state.won) return;
-    const text = state.message;
-    const lines = wrapText(text, 40);
-    const lineHeight = 10;
-    const boxH = 16 + lines.length * lineHeight;
-    drawRect(8, H - boxH - 8, W - 16, boxH, colours.outline);
-    drawRect(10, H - boxH - 10, W - 20, boxH, '#fff8ec');
-    lines.forEach((line, i) => drawText(line, 16, H - boxH - 4 + i * lineHeight, colours.outline, 'left', 7));
-  }
-
-  function wrapText(text, max) {
+  function wrapText(text, maxChars) {
     const words = text.split(' ');
     const lines = [];
     let line = '';
-    for (const word of words) {
-      const next = line ? `${line} ${word}` : word;
-      if (next.length > max) {
+    words.forEach(word => {
+      const next = line ? line + ' ' + word : word;
+      if (next.length > maxChars && line) {
         lines.push(line);
         line = word;
       } else {
         line = next;
       }
-    }
+    });
     if (line) lines.push(line);
     return lines;
   }
 
-  function pxFactory(originX, originY) {
-    return (x, y, w, h, colour) => drawRect(originX + x, originY + y, w, h, colour);
+  function drawMessage() {
+    if (state.messageTimer <= 0 && !state.paused && !state.ended) return;
+    const lines = wrapText(state.message, 39);
+    const h = 12 + lines.length * 9;
+    ctx.fillStyle = 'rgba(19, 28, 39, .92)';
+    ctx.fillRect(8, H - h - 8, W - 16, h);
+    ctx.fillStyle = colours.white;
+    lines.forEach((line, index) => drawText(line, 14, H - h - 3 + index * 9, colours.white, 'left', 6));
   }
 
-  function drawWingPair(px, dir, main, edge) {
-    if (dir === 'left') {
-      px(8, 3, 7, 12, edge);
-      px(9, 4, 5, 10, main);
-      px(10, 6, 3, 2, colours.white);
-      return;
+  function drawTopHud() {
+    ctx.fillStyle = 'rgba(17, 24, 34, .9)';
+    ctx.fillRect(6, 5, 74, 18);
+    ctx.fillRect(W - 91, 5, 85, 18);
+    drawText(formatTime(state.remaining), 12, 9, colours.white, 'left', 9);
+    drawText('LAP ' + state.player.laps, W - 85, 9, colours.white, 'left', 7);
+    drawText('HIT ' + state.player.hits, W - 47, 9, colours.yellow, 'left', 7);
+
+    if (!state.ballPhaseStarted) {
+      drawText('BALLS AT 5:00', 160, 8, colours.white, 'center', 7);
+    } else if (state.player.hasBall) {
+      drawText('BALL READY', 160, 8, colours.yellow, 'center', 7);
     }
-    if (dir === 'right') {
-      px(1, 3, 7, 12, edge);
-      px(2, 4, 5, 10, main);
-      px(3, 6, 3, 2, colours.white);
-      return;
-    }
-    px(-3, 4, 6, 10, edge);
-    px(-2, 5, 5, 8, main);
-    px(13, 4, 6, 10, edge);
-    px(13, 5, 5, 8, main);
-    px(-1, 8, 3, 2, colours.white);
-    px(14, 8, 3, 2, colours.white);
   }
 
-  function drawMushroomFairy(x, y, dir = 'down', frame = 0) {
-    const bob = Math.sin(frame) > 0.25 ? 1 : 0;
-    const px = pxFactory(Math.round(x - 8), Math.round(y - 15 + bob));
+  function drawPauseOverlay() {
+    if (!state.paused) return;
 
-    drawRect(x - 6, y + 4, 12, 3, 'rgba(0,0,0,.18)');
-    drawWingPair(px, dir, colours.wing, colours.wingEdge);
+    ctx.fillStyle = 'rgba(15, 22, 31, .55)';
+    ctx.fillRect(0, 0, W, H);
 
-    // Hair and head.
-    px(3, 5, 10, 8, colours.outline);
-    px(4, 6, 8, 7, colours.hair);
-
-    // Mushroom cap changes by direction.
-    if (dir === 'up') {
-      px(1, 0, 14, 7, colours.outline);
-      px(2, 0, 12, 6, colours.red);
-      px(4, 1, 3, 2, colours.white);
-      px(10, 2, 3, 2, colours.white);
-    } else if (dir === 'left' || dir === 'right') {
-      px(1, 0, 13, 7, colours.outline);
-      px(2, 0, 11, 6, colours.red);
-      px(4, 1, 3, 2, colours.white);
-      px(9, 3, 3, 2, colours.white);
+    if (state.countdown > 0) {
+      const number = Math.max(1, Math.ceil(state.countdown));
+      drawText(String(number), W / 2, H / 2 - 23, colours.yellow, 'center', 30);
+      drawText('GET READY', W / 2, H / 2 + 10, colours.white, 'center', 8);
     } else {
-      px(1, 1, 14, 7, colours.outline);
-      px(2, 0, 12, 7, colours.red);
-      px(4, 1, 3, 2, colours.white);
-      px(10, 2, 3, 2, colours.white);
-      px(7, 4, 2, 2, colours.white);
+      drawText('RACE PAUSED', W / 2, 42, colours.white, 'center', 12);
+      drawText(state.pauseReason, W / 2, 61, colours.yellow, 'center', 7);
     }
-
-    if (dir !== 'up') {
-      px(5, 8, 6, 5, colours.skin);
-      px(5, 9, 1, 1, colours.black);
-      px(10, 9, 1, 1, colours.black);
-      px(7, 11, 3, 1, colours.blush);
-    } else {
-      px(4, 7, 8, 4, colours.hairDark);
-    }
-
-    // Body.
-    px(4, 13, 8, 7, colours.outline);
-    px(5, 12, 6, 7, colours.redDark);
-    px(4, 15, 8, 4, colours.red);
-    px(6, 13, 4, 2, colours.white);
-    px(3, 19, 3, 4, colours.outline);
-    px(10, 19, 3, 4, colours.outline);
-    px(4, 19, 2, 3, colours.skin);
-    px(10, 19, 2, 3, colours.skin);
   }
 
-  function drawBlossomFriend(x, y, dir = 'down') {
-    const px = pxFactory(Math.round(x - 8), Math.round(y - 14));
-    drawRect(x - 5, y + 4, 10, 3, 'rgba(0,0,0,.16)');
-    drawWingPair(px, dir, '#ffd0dd', '#f28fb5');
-    px(3, 2, 10, 9, colours.outline);
-    px(4, 2, 8, 8, colours.pink);
-    px(9, 0, 4, 4, colours.yellow);
-    px(10, -1, 3, 3, colours.pinkDark);
-    if (dir !== 'up') {
-      px(5, 7, 6, 5, colours.skin);
-      px(5, 8, 1, 1, colours.black);
-      px(10, 8, 1, 1, colours.black);
-    } else {
-      px(4, 7, 8, 4, colours.pinkDark);
-    }
-    px(4, 12, 8, 7, colours.outline);
-    px(5, 12, 6, 6, colours.pinkDark);
-    px(4, 15, 8, 4, colours.pink);
-    px(5, 19, 2, 3, colours.black);
-    px(10, 19, 2, 3, colours.black);
-  }
-
-  function drawWorldObjects() {
-    drawTree(28, 38);
-    drawTree(96, 24, 1);
-    drawTree(40, 160, 1);
-    drawTree(236, 31);
-    drawTree(294, 152, 1);
-
-    drawMushroomDorm(251, 139, 'red');
-    drawMushroomDorm(281, 136, 'purple');
-    drawGate();
-
-    // Flowers and stones.
-    const decor = [
-      [22, 96, colours.pink], [64, 47, colours.yellow], [110, 152, colours.pink],
-      [189, 127, colours.pink], [215, 75, colours.yellow], [303, 34, colours.pink]
-    ];
-    for (const [x, y, c] of decor) {
-      drawRect(x - 1, y - 1, 3, 3, c);
-      drawRect(x, y + 1, 1, 3, colours.greenDark);
-    }
-
-    drawText('Dorms', 266, 159, colours.outline, 'center', 5);
-  }
-
-  function drawWinScreen() {
-    if (!state.won) return;
-    drawRect(36, 28, 248, 120, 'rgba(255, 248, 236, .95)');
-    drawRect(40, 32, 240, 112, '#fff8ec');
-    drawText('Welcome to Fairy High!', 160, 48, colours.redDark, 'center', 10);
-    drawText('You passed the Entry Challenge.', 160, 68, colours.outline, 'center', 7);
-    drawText('Pippa is your neighbour in', 160, 82, colours.outline, 'center', 6);
-    drawText('the mushroom dorms.', 160, 91, colours.outline, 'center', 6);
-    drawMushroomDorm(138, 121, 'red');
-    drawMushroomDorm(182, 121, 'purple');
-    drawText('Press E or Restart to play again.', 160, 134, colours.muted, 'center', 6);
+  function drawFinish() {
+    if (!state.ended) return;
+    ctx.fillStyle = 'rgba(15, 22, 31, .84)';
+    ctx.fillRect(30, 28, 260, 124);
+    drawText('FINISH!', 160, 42, colours.yellow, 'center', 17);
+    drawText('Laps: ' + state.player.laps, 160, 72, colours.white, 'center', 9);
+    drawText('Cars bonked: ' + state.player.hits, 160, 86, colours.white, 'center', 9);
+    const score = state.player.laps + state.player.hits;
+    drawText('Score: ' + score, 160, 104, colours.yellow, 'center', 11);
+    drawText('Press Restart to race again.', 160, 130, colours.white, 'center', 6);
   }
 
   function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawGround();
-    drawWorldObjects();
+    ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
+    ctx.clearRect(0, 0, W, H);
 
-    for (const petal of state.petals) drawPetal(petal);
+    drawGrass();
+    drawTrack();
+    state.pickups.forEach(drawPickup);
 
-    const entities = [
-      { y: state.friend.y, draw: () => drawBlossomFriend(state.friend.x, state.friend.y, state.friend.joined ? state.player.dir : 'down') },
-      { y: state.player.y, draw: () => drawMushroomFairy(state.player.x, state.player.y, state.player.dir, state.player.bob) }
+    const racers = [
+      ...state.npcs.filter(npc => !npc.knockedOut).map(npc => ({ y: npc.y, draw: () => drawCar(npc, false) })),
+      ...(state.player.knockedOut ? [] : [{ y: state.player.y, draw: () => drawCar(state.player, true) }])
     ];
+    racers.sort((a, b) => a.y - b.y).forEach(item => item.draw());
 
-    entities.sort((a, b) => a.y - b.y).forEach(entity => entity.draw());
-
-    drawDialogue();
-    drawWinScreen();
+    drawProjectiles();
+    drawParticles();
+    drawTopHud();
+    drawMessage();
+    drawPauseOverlay();
+    drawFinish();
   }
 
   function loop(now) {
@@ -549,11 +760,14 @@
 
   window.addEventListener('keydown', event => {
     const key = event.key.toLowerCase();
-    if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'w', 'a', 's', 'd', 'e'].includes(key)) {
+    if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'w', 'a', 's', 'd', 'e', ' '].includes(key)) {
       event.preventDefault();
     }
-    if (key === 'e') interact();
-    else keys.add(key);
+    if ((key === 'e' || key === ' ') && !event.repeat) {
+      throwBall(state.player);
+      return;
+    }
+    keys.add(key);
   });
 
   window.addEventListener('keyup', event => {
@@ -581,29 +795,43 @@
     button.addEventListener('contextmenu', event => event.preventDefault());
   }
 
-  for (const button of moveButtons) {
-    holdKey(button, button.dataset.key);
-  }
+  moveButtons.forEach(button => holdKey(button, button.dataset.key));
 
-  interactButton.addEventListener('pointerdown', event => {
+  throwButton.addEventListener('pointerdown', event => {
     event.preventDefault();
-    interactButton.classList.add('is-held');
-    interact();
+    throwButton.classList.add('is-held');
+    throwBall(state.player);
   });
-  interactButton.addEventListener('pointerup', () => interactButton.classList.remove('is-held'));
-  interactButton.addEventListener('pointercancel', () => interactButton.classList.remove('is-held'));
-  interactButton.addEventListener('contextmenu', event => event.preventDefault());
+  throwButton.addEventListener('pointerup', () => throwButton.classList.remove('is-held'));
+  throwButton.addEventListener('pointercancel', () => throwButton.classList.remove('is-held'));
+  throwButton.addEventListener('contextmenu', event => event.preventDefault());
 
   restartButton.addEventListener('click', resetGame);
 
-  // Small read-only hook used by our automated smoke test.
-  window.fairyHighDebug = {
+  window.pixelBallRacersDebug = {
     getState: () => ({
-      player: { x: state.player.x, y: state.player.y, dir: state.player.dir },
-      petalsCollected: state.petalsCollected,
-      bridgeRepaired: state.bridgeRepaired,
-      won: state.won
-    })
+      remaining: state.remaining,
+      ballPhaseStarted: state.ballPhaseStarted,
+      paused: state.paused,
+      ended: state.ended,
+      player: {
+        x: state.player.x,
+        y: state.player.y,
+        laps: state.player.laps,
+        hits: state.player.hits,
+        hasBall: state.player.hasBall,
+        type: state.player.type
+      },
+      npcs: state.npcs.map(npc => ({
+        id: npc.id,
+        name: npc.name,
+        laps: npc.laps,
+        hasBall: npc.hasBall,
+        type: npc.type
+      }))
+    }),
+    throwBall: () => throwBall(state.player),
+    reset: resetGame
   };
 
   updateHud();
