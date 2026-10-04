@@ -129,9 +129,8 @@
         x: playerPoint.x,
         y: playerPoint.y,
         angle: trackTangent(startT),
-        speed: 0.34,
-        progress: startT,
-        laneOffset: 0,
+        speed: 36,
+        offTrackTimer: 0,
         type: 0,
         hasBall: false,
         throwCooldown: 0,
@@ -211,34 +210,56 @@
 
     const left = keys.has('arrowleft') || keys.has('a');
     const right = keys.has('arrowright') || keys.has('d');
-    const steering = left === right ? 0 : (left ? 1 : -1);
 
-    // Simple kid-friendly driving: forward motion is automatic.
-    // Left/right only moves the car across the track while the circuit
-    // handles forward direction automatically.
-    const targetSpeed = 0.34;
-    p.speed += (targetSpeed - p.speed) * Math.min(1, dt * 3);
-    p.progress += p.speed * dt;
+    // Automatic acceleration, manual steering.
+    // The game never turns the car for the player while it is on the circuit.
+    const trackBeforeMove = nearestTrackInfo(p.x, p.y);
+    const onRoad = trackBeforeMove.error <= TRACK.halfWidth;
+    const targetSpeed = onRoad ? 36 : 22;
+    p.speed += (targetSpeed - p.speed) * Math.min(1, dt * 3.2);
 
-    if (steering !== 0) {
-      p.laneOffset += steering * 26 * dt;
+    const steerStrength = 2.15;
+    if (left && !right) p.angle -= steerStrength * dt;
+    if (right && !left) p.angle += steerStrength * dt;
+
+    p.x += Math.cos(p.angle) * p.speed * dt;
+    p.y += Math.sin(p.angle) * p.speed * dt;
+
+    const track = nearestTrackInfo(p.x, p.y);
+
+    if (track.error > TRACK.halfWidth) {
+      p.offTrackTimer += dt;
     } else {
-      // Gentle recentring makes small steering corrections forgiving.
-      p.laneOffset += (0 - p.laneOffset) * Math.min(1, dt * 0.65);
+      p.offTrackTimer = 0;
     }
-    p.laneOffset = clamp(p.laneOffset, -11, 11);
 
-    const centre = trackPoint(p.progress);
-    const normal = trackNormal(p.progress);
-    p.x = centre.x + normal.x * p.laneOffset;
-    p.y = centre.y + normal.y * p.laneOffset;
-    p.angle = trackTangent(p.progress) - steering * 0.12;
-
-    const completedLaps = Math.floor((p.progress + Math.PI / 2) / (Math.PI * 2));
-    if (completedLaps > p.laps) {
-      p.laps = completedLaps;
-      setMessage('LAP ' + p.laps + '!', 1.5);
+    // Recovery only: if the player gets well away from the circuit for long enough,
+    // put the car back on the nearest part of the track. This does not steer during racing.
+    if (track.error > TRACK.halfWidth + 24 && p.offTrackTimer > 1.15) {
+      p.x = track.x;
+      p.y = track.y;
+      p.angle = trackTangent(track.t);
+      p.speed = 28;
+      p.offTrackTimer = 0;
+      p.lapTravel = Math.max(0, p.lapTravel - 0.75);
+      setMessage('Back on track!', 1.1);
     }
+
+    p.x = clamp(p.x, 4, W - 4);
+    p.y = clamp(p.y, 4, H - 4);
+
+    const currentTrack = nearestTrackInfo(p.x, p.y);
+    const delta = wrapAngle(currentTrack.t - p.lastTrackAngle);
+    if (currentTrack.error < TRACK.halfWidth + 5 && Math.abs(delta) < 0.45) {
+      p.lapTravel += delta;
+      if (p.lapTravel >= Math.PI * 2) {
+        p.lapTravel -= Math.PI * 2;
+        p.laps += 1;
+        setMessage('LAP ' + p.laps + '!', 1.5);
+      }
+      if (p.lapTravel < -0.3) p.lapTravel = -0.3;
+    }
+    p.lastTrackAngle = currentTrack.t;
   }
 
   function updateNpcs(dt) {
@@ -332,7 +353,8 @@
 
   function choosePlayerCar(typeIndex) {
     state.player.type = typeIndex;
-    state.player.speed = 0.34;
+    state.player.speed = 36;
+    state.player.offTrackTimer = 0;
     state.player.hasBall = false;
     state.player.knockedOut = false;
     garagePanel.hidden = true;
