@@ -3,54 +3,47 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-  <meta name="theme-color" content="#1f6ed4" />
+  <meta name="theme-color" content="#b75562" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Pixel Ball Racers" />
-  <title>Pixel Ball Racers</title>
+  <meta name="apple-mobile-web-app-title" content="Fairy High" />
+  <title>Fairy High: Entry Challenge</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <main class="shell">
-    <section class="game-card" aria-label="Pixel Ball Racers game">
+    <section class="game-card" aria-label="Fairy High game">
       <div class="topbar">
         <div>
-          <h1>Pixel Ball Racers</h1>
-          <p>Race the circuit. Grab a ball. Bonk an NPC car. Keep going until time runs out.</p>
+          <h1>Fairy High: Entry Challenge</h1>
+          <p>Collect 3 glowing petals, repair the bridge, then reach Fairy High.</p>
         </div>
         <button id="restartButton" type="button">Restart</button>
       </div>
 
       <div class="canvas-wrap">
-        <canvas id="game" width="640" height="360" aria-label="Top-down pixel racing game"></canvas>
+        <canvas id="game" width="640" height="360" aria-label="Fairy High Entry Challenge game canvas"></canvas>
       </div>
 
       <div class="hud" aria-live="polite">
-        <div id="questText">Warm-up lap: balls unlock at 5:00.</div>
-        <div id="statusText">Laps: 0 · Hits: 0 · Ball: —</div>
-      </div>
-
-      <div id="garagePanel" class="garage" hidden>
-        <strong>Your car was bonked. Pick a new car:</strong>
-        <div id="garageChoices" class="garage-choices"></div>
+        <div id="questText">Quest: collect 3 glowing petals.</div>
+        <div id="statusText">Petals: 0 / 3</div>
       </div>
 
       <div class="touch-controls" aria-label="Touch game controls">
-        <div class="drive-controls" aria-label="Driving controls">
-          <button class="move steer-left" type="button" data-key="arrowleft" aria-label="Steer left">◀</button>
-          <div class="pedals">
-            <button class="move" type="button" data-key="arrowup" aria-label="Accelerate">▲</button>
-            <button class="move" type="button" data-key="arrowdown" aria-label="Brake">▼</button>
-          </div>
-          <button class="move steer-right" type="button" data-key="arrowright" aria-label="Steer right">▶</button>
+        <div class="dpad" aria-label="Movement controls">
+          <button class="move up" type="button" data-key="arrowup" aria-label="Move up">▲</button>
+          <button class="move left" type="button" data-key="arrowleft" aria-label="Move left">◀</button>
+          <button class="move down" type="button" data-key="arrowdown" aria-label="Move down">▼</button>
+          <button class="move right" type="button" data-key="arrowright" aria-label="Move right">▶</button>
         </div>
-        <button id="throwButton" class="throw-button" type="button">THROW</button>
+        <button id="interactButton" class="interact-button" type="button">Magic / Talk</button>
       </div>
 
       <div class="controls">
-        <strong>Desktop:</strong> ↑/W accelerate, ↓/S brake, ←/A and →/D steer, <kbd>Space</kbd> or <kbd>E</kbd> throw.
-        <span class="mobile-note"><strong>Touch:</strong> use the on-screen controls.</span>
+        <strong>Desktop:</strong> arrow keys or WASD to move; press <kbd>E</kbd> to interact.
+        <span class="mobile-note"><strong>iPhone/iPad:</strong> use the on-screen controls.</span>
       </div>
     </section>
   </main>
