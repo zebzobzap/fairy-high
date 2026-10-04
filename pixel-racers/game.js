@@ -78,6 +78,13 @@
     return Math.atan2(TRACK.ry * Math.cos(t), -TRACK.rx * Math.sin(t));
   }
 
+  function trackNormal(t) {
+    const nx = Math.cos(t) / TRACK.rx;
+    const ny = Math.sin(t) / TRACK.ry;
+    const length = Math.hypot(nx, ny) || 1;
+    return { x: nx / length, y: ny / length };
+  }
+
   function nearestTrackInfo(x, y) {
     const t = Math.atan2((y - TRACK.cy) / TRACK.ry, (x - TRACK.cx) / TRACK.rx);
     const p = trackPoint(t);
@@ -122,7 +129,9 @@
         x: playerPoint.x,
         y: playerPoint.y,
         angle: trackTangent(startT),
-        speed: 18,
+        speed: 0.34,
+        progress: startT,
+        laneOffset: 0,
         type: 0,
         hasBall: false,
         throwCooldown: 0,
@@ -200,64 +209,36 @@
     const p = state.player;
     p.throwCooldown = Math.max(0, p.throwCooldown - dt);
 
-    const accelerating = keys.has('arrowup') || keys.has('w');
-    const braking = keys.has('arrowdown') || keys.has('s');
     const left = keys.has('arrowleft') || keys.has('a');
     const right = keys.has('arrowright') || keys.has('d');
+    const steering = left === right ? 0 : (left ? 1 : -1);
 
-    // Kid-friendly assisted driving: the car cruises by itself, steering is stronger,
-    // and the circuit gently corrects small mistakes.
-    const cruiseSpeed = 31;
-    if (braking) p.speed -= 58 * dt;
-    else if (accelerating) p.speed += 42 * dt;
-    else p.speed += (cruiseSpeed - p.speed) * Math.min(1, dt * 2.6);
-    p.speed = clamp(p.speed, 0, 46);
+    // Simple kid-friendly driving: forward motion is automatic.
+    // Left/right only moves the car across the track while the circuit
+    // handles forward direction automatically.
+    const targetSpeed = 0.34;
+    p.speed += (targetSpeed - p.speed) * Math.min(1, dt * 3);
+    p.progress += p.speed * dt;
 
-    const steerStrength = 2.65 * clamp(p.speed / 24, 0.45, 1);
-    if (left) p.angle -= steerStrength * dt;
-    if (right) p.angle += steerStrength * dt;
-
-    p.x += Math.cos(p.angle) * p.speed * dt;
-    p.y += Math.sin(p.angle) * p.speed * dt;
-
-    const track = nearestTrackInfo(p.x, p.y);
-
-    if (p.speed > 4) {
-      const desiredAngle = trackTangent(track.t);
-      const angleAssist = track.error > TRACK.halfWidth ? 2.1 : 1.25;
-      p.angle += wrapAngle(desiredAngle - p.angle) * Math.min(1, dt * angleAssist);
+    if (steering !== 0) {
+      p.laneOffset += steering * 26 * dt;
+    } else {
+      // Gentle recentring makes small steering corrections forgiving.
+      p.laneOffset += (0 - p.laneOffset) * Math.min(1, dt * 0.65);
     }
+    p.laneOffset = clamp(p.laneOffset, -11, 11);
 
-    if (track.error > 2) {
-      const centreAssist = track.error > TRACK.halfWidth ? 2.4 : 0.75;
-      const pull = Math.min(1, dt * centreAssist);
-      p.x += (track.x - p.x) * pull;
-      p.y += (track.y - p.y) * pull;
-    }
+    const centre = trackPoint(p.progress);
+    const normal = trackNormal(p.progress);
+    p.x = centre.x + normal.x * p.laneOffset;
+    p.y = centre.y + normal.y * p.laneOffset;
+    p.angle = trackTangent(p.progress) - steering * 0.12;
 
-    if (track.error > TRACK.halfWidth) {
-      p.speed *= Math.pow(0.45, dt);
+    const completedLaps = Math.floor((p.progress + Math.PI / 2) / (Math.PI * 2));
+    if (completedLaps > p.laps) {
+      p.laps = completedLaps;
+      setMessage('LAP ' + p.laps + '!', 1.5);
     }
-    if (track.error > TRACK.halfWidth + 20) {
-      p.x += (track.x - p.x) * Math.min(1, dt * 4);
-      p.y += (track.y - p.y) * Math.min(1, dt * 4);
-    }
-
-    p.x = clamp(p.x, 4, W - 4);
-    p.y = clamp(p.y, 4, H - 4);
-
-    const currentTrackAngle = nearestTrackInfo(p.x, p.y).t;
-    const delta = wrapAngle(currentTrackAngle - p.lastTrackAngle);
-    if (Math.abs(delta) < 0.45) {
-      p.lapTravel += delta;
-      if (p.lapTravel >= Math.PI * 2) {
-        p.lapTravel -= Math.PI * 2;
-        p.laps += 1;
-        setMessage('LAP ' + p.laps + '!', 1.5);
-      }
-      if (p.lapTravel < -0.3) p.lapTravel = -0.3;
-    }
-    p.lastTrackAngle = currentTrackAngle;
   }
 
   function updateNpcs(dt) {
@@ -289,7 +270,7 @@
       }
 
       const racer = state.player;
-      if (!racer.hasBall && dist(racer, pickup) < 9) {
+      if (!racer.hasBall && dist(racer, pickup) < 16) {
         racer.hasBall = true;
         pickup.active = false;
         pickup.respawn = 5.5;
@@ -351,7 +332,7 @@
 
   function choosePlayerCar(typeIndex) {
     state.player.type = typeIndex;
-    state.player.speed = 18;
+    state.player.speed = 0.34;
     state.player.hasBall = false;
     state.player.knockedOut = false;
     garagePanel.hidden = true;
@@ -760,7 +741,7 @@
 
   window.addEventListener('keydown', event => {
     const key = event.key.toLowerCase();
-    if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'w', 'a', 's', 'd', 'e', ' '].includes(key)) {
+    if (['arrowleft', 'arrowright', 'a', 'd', 'e', ' '].includes(key)) {
       event.preventDefault();
     }
     if ((key === 'e' || key === ' ') && !event.repeat) {
