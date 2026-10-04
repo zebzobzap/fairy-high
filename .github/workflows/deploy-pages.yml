@@ -1,4 +1,4 @@
-name: Deploy Fairy High to GitHub Pages
+name: Deploy Pixel Ball Racers to GitHub Pages
 
 on:
   push:
