@@ -1,43 +1,5 @@
-const CACHE = 'fairy-high-v3';
-const ASSETS = [
-  './',
-  './index.html',
-  './style.css',
-  './game.js',
-  './manifest.webmanifest'
-];
-
-self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));
-  self.skipWaiting();
-});
-
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys => Promise.all(
-      keys
-        .filter(key => key.startsWith('fairy-high-') && key !== CACHE)
-        .map(key => caches.delete(key))
-    ))
-  );
-  self.clients.claim();
-});
-
-self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') return;
-  const url = new URL(event.request.url);
-  const scopePath = new URL(self.registration.scope).pathname;
-
-  // Pixel Ball Racers has its own, narrower service-worker scope.
-  if (url.origin !== self.location.origin || url.pathname.startsWith(scopePath + 'pixel-racers/')) return;
-
-  event.respondWith(
-    caches.open(CACHE).then(cache =>
-      cache.match(event.request).then(cached => cached || fetch(event.request).then(response => {
-        const copy = response.clone();
-        cache.put(event.request, copy);
-        return response;
-      }))
-    )
-  );
-});
+const CACHE='fairy-high-v4';
+const ASSETS=['./','./index.html','./style.css','./art-data.js','./game.js','./manifest.webmanifest'];
+self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)));self.skipWaiting();});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('fairy-high-')&&k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim();});
+self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;const u=new URL(e.request.url),scope=new URL(self.registration.scope).pathname;if(u.origin!==self.location.origin||u.pathname.startsWith(scope+'pixel-racers/'))return;e.respondWith(caches.match(e.request).then(hit=>hit||fetch(e.request).then(r=>{const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return r;})));});

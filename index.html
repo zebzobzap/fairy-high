@@ -2,57 +2,83 @@
 <html lang="en-AU">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#b75562" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Fairy High" />
-  <title>Fairy High: Entry Challenge</title>
+  <title>Fairy High</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main class="shell">
-    <section class="game-card" aria-label="Fairy High game">
-      <div class="topbar">
-        <div>
-          <h1>Fairy High: Entry Challenge</h1>
-          <p>Collect 3 glowing petals, repair the bridge, then reach Fairy High.</p>
-        </div>
-        <button id="restartButton" type="button">Restart</button>
-      </div>
+<main id="app">
+  <section id="loading" class="screen active loading-screen"><div class="loading-card"><h1>Fairy High</h1><p>Preparing the magic…</p></div></section>
 
+  <section id="splash" class="screen image-screen">
+    <img class="full-art" data-art="welcome" alt="Two young fairies welcoming you to Fairy High" />
+    <div class="shade"></div>
+    <div class="splash-card glass-card">
+      <span class="eyebrow">A magical school adventure</span>
+      <h1>Fairy High</h1>
+      <p>Pass the Entry Challenge, meet a new friend and begin your first day at Fairy High.</p>
+      <button id="startBtn" class="primary">Start</button>
+    </div>
+  </section>
+
+  <section id="story" class="screen image-screen">
+    <img id="storyArt" class="full-art" data-art="academy" alt="Fairy High" />
+    <div class="shade story-shade"></div>
+    <div class="story-card glass-card">
+      <span id="storyEyebrow" class="eyebrow">Welcome</span>
+      <h2 id="storyTitle"></h2>
+      <p id="storyText"></p>
+      <div class="row"><button id="storyBack" class="secondary">Back</button><button id="storyNext" class="primary">Next</button></div>
+    </div>
+  </section>
+
+  <section id="select" class="screen select-screen">
+    <div class="select-card panel">
+      <span class="eyebrow">Choose your fairy</span>
+      <h2>Who will take the Entry Challenge?</h2>
+      <p class="lead">Choose one fairy. You will meet the other during the challenge.</p>
+      <div class="choices">
+        <button class="choice" data-character="mushroom">
+          <img data-art="mushroom" alt="Mimi Mushroom" />
+          <div><h3>Mimi Mushroom</h3><p>Brave, curious and steady.</p></div>
+        </button>
+        <button class="choice" data-character="blossom">
+          <img data-art="blossom" alt="Posy Blossom" />
+          <div><h3>Posy Blossom</h3><p>Cheerful, clever and quick.</p></div>
+        </button>
+      </div>
+      <div class="select-footer"><strong id="selectedText">Choose a fairy to continue.</strong><div class="row"><button id="selectBack" class="secondary">Back</button><button id="selectNext" class="primary" disabled>Continue</button></div></div>
+    </div>
+  </section>
+
+  <section id="gameScreen" class="screen game-screen">
+    <div class="game-card panel">
+      <header class="game-head"><div><span class="eyebrow">Entry Challenge</span><h2>Fairy High</h2><p id="gameLead">Collect the petals, repair the bridge and reach the school gates.</p></div><button id="restartStory" class="secondary small">Start again</button></header>
       <div class="canvas-wrap">
-        <canvas id="game" width="640" height="360" aria-label="Fairy High Entry Challenge game canvas"></canvas>
+        <canvas id="game" width="640" height="360" aria-label="Fairy High Entry Challenge"></canvas>
+        <div id="winOverlay" class="win-overlay hidden"><div class="win-card glass-card"><span class="eyebrow">Challenge complete</span><h2>Welcome to Fairy High</h2><p id="winText"></p><button id="playAgain" class="primary">Play again</button></div></div>
       </div>
-
-      <div class="hud" aria-live="polite">
-        <div id="questText">Quest: collect 3 glowing petals.</div>
-        <div id="statusText">Petals: 0 / 3</div>
-      </div>
-
-      <div class="touch-controls" aria-label="Touch game controls">
-        <div class="dpad" aria-label="Movement controls">
-          <button class="move up" type="button" data-key="arrowup" aria-label="Move up">▲</button>
-          <button class="move left" type="button" data-key="arrowleft" aria-label="Move left">◀</button>
-          <button class="move down" type="button" data-key="arrowdown" aria-label="Move down">▼</button>
-          <button class="move right" type="button" data-key="arrowright" aria-label="Move right">▶</button>
+      <div class="hud"><span id="questText">Quest: collect 3 glowing petals.</span><span id="statusText">Petals: 0 / 3</span></div>
+      <div class="touch-controls">
+        <div class="dpad">
+          <button data-key="arrowup" class="move up">▲</button>
+          <button data-key="arrowleft" class="move left">◀</button>
+          <button data-key="arrowdown" class="move down">▼</button>
+          <button data-key="arrowright" class="move right">▶</button>
         </div>
-        <button id="interactButton" class="interact-button" type="button">Magic / Talk</button>
+        <button id="interactBtn" class="primary interact">Magic / Talk</button>
       </div>
-
-      <div class="controls">
-        <strong>Desktop:</strong> arrow keys or WASD to move; press <kbd>E</kbd> to interact.
-        <span class="mobile-note"><strong>iPhone/iPad:</strong> use the on-screen controls.</span>
-      </div>
-    </section>
-  </main>
-
-  <script src="game.js"></script>
-  <script>
-    if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
-    }
-  </script>
+      <p class="desktop-help">Arrow keys or WASD to move. Press <kbd>E</kbd> to interact.</p>
+    </div>
+  </section>
+</main>
+<script src="art-data.js"></script>
+<script src="game.js"></script>
+<script>if('serviceWorker' in navigator&&location.protocol!=='file:')navigator.serviceWorker.register('./sw.js').catch(()=>{});</script>
 </body>
 </html>
