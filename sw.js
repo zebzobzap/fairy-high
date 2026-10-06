@@ -19,12 +19,11 @@ self.addEventListener('fetch',event=>{
   if(event.request.method!=='GET') return;
   const url=new URL(event.request.url);
   const scopePath=new URL(self.registration.scope).pathname;
-
   if(url.origin!==self.location.origin || url.pathname.startsWith(scopePath+'pixel-racers/')) return;
 
   if(event.request.mode==='navigate'){
     event.respondWith(
-      fetch(event.request).then(response=>{
+      fetch(event.request,{cache:'no-store'}).then(response=>{
         const copy=response.clone();
         caches.open(CACHE).then(cache=>cache.put('./index.html',copy));
         return response;
