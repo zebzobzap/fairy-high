@@ -1,4 +1,4 @@
-const CACHE='fairy-high-v6';
+const CACHE='fairy-high-v7';
 const ASSETS=['./','./index.html','./manifest.webmanifest'];
 
 self.addEventListener('install',event=>{
@@ -19,6 +19,7 @@ self.addEventListener('fetch',event=>{
   if(event.request.method!=='GET') return;
   const url=new URL(event.request.url);
   const scopePath=new URL(self.registration.scope).pathname;
+
   if(url.origin!==self.location.origin || url.pathname.startsWith(scopePath+'pixel-racers/')) return;
 
   if(event.request.mode==='navigate'){
