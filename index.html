@@ -997,4 +997,278 @@
   }
   function begin(){
     if(!chosen)return;
-    game=new Core.Game(chosen);persist();
+    game=new Core.Game(chosen);persist();    openStory({slides:[
+      {eyebrow:'CHAPTER 01 · THE LETTER WITH NO WORDS',title:'A curious invitation.',text:`It is a special morning at Thistle Cottage. ${Core.CHARACTERS[chosen].short} dreams of going to Fairy High. Today, an invitation has arrived.`,art:'letter'},
+      {eyebrow:'YOUR ADVENTURE STARTS AT HOME',title:'Look a little closer.',text:'There is a tiny lantern on the invitation, but not a single word. Explore the cottage, talk to Aunt Thistle and see what you can discover.',art:'letter'}
+    ],endLabel:'Explore home →',onEnd:()=>show('play'),onBack:selectNew});
+  }
+  function openStory(config){story=config;storyIndex=0;closeModal(false);show('story');renderStory();}
+  function renderStory(){
+    const s=story.slides[storyIndex];
+    $('storyEyebrow').textContent=s.eyebrow;$('storyHeading').textContent=s.title;$('storyText').textContent=s.text;
+    $('storyArt').src=ART[s.art];$('storyArt').alt={letter:'A glowing envelope on a table inside a cosy fairy cottage.',glow:'Golden light reveals a lantern on an invitation.',garden:'A garden gate opens onto the road towards the village.',cottage:'The fairy cottage in the morning.'}[s.art]||'An illustration from the Lantern Trail.';
+    const layered=['village','bloomStory'].includes(s.art);
+    $('storyFairy').hidden=!layered;
+    if(layered){const char=game?.state.character||chosen||'mushroom';$('storyFairy').src=ART[char];$('storyFairy').alt=Core.CHARACTERS[char].name;}
+    $('storyBloom').hidden=s.art!=='bloomStory';
+    $('story').classList.toggle('chapter-two-art',layered);
+    $('storyClue').hidden=!(s.art==='glow'&&storyIndex===story.slides.length-1);
+    $('storyPage').textContent=`${storyIndex+1} / ${story.slides.length}`;
+    $('storyBack').disabled=storyIndex===0&&!story.onBack;
+    $('storyNext').textContent=storyIndex===story.slides.length-1?story.endLabel:'Continue →';
+    $('storyHeading').focus({preventScroll:true});
+  }
+  function nextStory(){
+    if(scene!=='story'||!story)return;
+    if(storyIndex<story.slides.length-1){storyIndex++;renderStory();}
+    else{const end=story.onEnd;story=null;end();}
+  }
+  function previousStory(){if(!story)return;if(storyIndex){storyIndex--;renderStory();}else story.onBack?.();}
+  function refresh(){
+    if(!game)return;
+    const s=game.state,f=s.flags;
+    $('objective').textContent=Core.objective(s);
+    $('questTitle').textContent=Core.chapterTitle(s);$('questNumber').textContent=Core.chapter(s)===2?'02':'01';$('questNumber').setAttribute('aria-label',`Task ${Core.chapter(s)}`);
+    $('questProgress').textContent=`${Core.checklist(s).filter(a=>a[1]).length} / 6`;
+    $('location').textContent=World.maps[s.map].name;
+    $('journalBtn').disabled=!f.packed;
+    $('journalBtn').title=f.packed?'Open your journal and map.':'Find your journey journal in the travel chest.';
+    $('glowBtn').disabled=!Core.hasGlow(s);
+    $('glowLabel').textContent=Core.hasGlow(s)?'F':(f.wand?'Ask Aunt Thistle':'Find your wand');
+    $('spellName').textContent=s.spell==='bloom'?'✿ Bloom':'✦ Glow';
+    $('spellsBtn').disabled=!Core.hasGlow(s);
+    refreshPrompt();
+  }
+  function refreshPrompt(){
+    const o=game?.nearby;
+    $('interactionPrompt').hidden=!o||!!modalKind||scene!=='play';
+    if(o)$('interactionLabel').textContent=o.label;
+  }
+  function toast(text){$('toast').textContent=text;$('toast').hidden=false;toastUntil=performance.now()+3400;}
+  function handle(event){
+    if(!event)return;
+    persist();refresh();
+    if(event.type==='dialogue')openDialogue(event);
+    if(event.type==='story'){
+      const complete=game.state.flags.complete;
+      openStory({slides:event.pages.map(text=>({eyebrow:event.eyebrow||(complete?'TASK ONE COMPLETE':'YOU LEARNED TO LOOK CLOSER'),title:event.title,text,art:event.art})),endLabel:game.state.task2.complete?'Keep exploring →':game.state.map==='village'?'Explore the village →':game.state.map==='greenhouseRoom'?'Back to the greenhouse →':complete?'Keep exploring →':'Back to the cottage →',onEnd:()=>show('play')});
+    }
+    if(event.type==='plan')openPlan();
+    if(event.type==='waterPuzzle')openWater();
+    if(event.type==='toast')toast(event.text);
+    if(event.type==='transition'){
+      clearInput();$('toast').hidden=true;$('transitionCurtain').classList.remove('flash');
+      void $('transitionCurtain').offsetWidth;$('transitionCurtain').classList.add('flash');
+      renderer.render(game,0);refreshPrompt();
+    }
+  }
+  function interact(){if(scene==='play'&&!modalKind&&game)handle(game.use());}
+  function cast(){if(scene==='play'&&!modalKind&&game)handle(game.cast());}
+  function openModal(kind,eyebrow,heading){
+    clearInput();modalKind=kind;$('modal').hidden=false;$('modal').classList.toggle('dialogue',kind==='dialogue');
+    // Only the dialog can receive focus until it is closed.
+    $(scene).inert=true;
+    $('modalEyebrow').textContent=eyebrow;$('modalHeading').textContent=heading;
+    $('modalBody').replaceChildren();$('modalActions').replaceChildren();$('modalPanel').scrollTop=0;
+    $('modalPanel').focus({preventScroll:true});refreshPrompt();
+  }
+  function modalButton(text,callback,primary=false,id){
+    const b=el('button',text,'button '+(primary?'primary':'quiet'));if(id)b.id=id;
+    b.addEventListener('click',callback);$('modalActions').append(b);return b;
+  }
+  function closeModal(focus=true){
+    modalKind=null;dialogue=null;$('modal').hidden=true;
+    for(const id of screens)$(id).inert=false;
+    clearInput();
+    if(focus&&scene==='play')$('game').focus({preventScroll:true});refreshPrompt();
+  }
+  function openDialogue(event){dialogue=event;dialogueIndex=0;renderDialogue();}
+  function renderDialogue(){
+    // openModal leaves the conversation data intact.
+    openModal('dialogue','A MOMENT IN YOUR STORY',dialogue.speaker);
+    $('modalBody').append(el('p',dialogue.pages[dialogueIndex]));
+    const last=dialogueIndex===dialogue.pages.length-1;
+    if(dialogue.pages.length>1)$('modalBody').append(el('p',`${dialogueIndex+1} / ${dialogue.pages.length}`,'fine'));
+    modalButton(last?'Got it':'Next →',()=>{if(last)closeModal();else{dialogueIndex++;renderDialogue();}},true,'dialogueNext').focus({preventScroll:true});
+  }
+  function drawMapInModal(){
+    const map=el('canvas',undefined,'map-preview');map.setAttribute('aria-label','Map of the current area. The rose-coloured dot is your fairy.');
+    $('modalBody').append(map,el('p','The rose-coloured dot is you. The outlined area is your view.','map-caption'));
+    renderer.minimap(map,game);
+  }
+  function openJournal(){
+    if(!game?.state.flags.packed)return;
+    openModal('journal','YOUR JOURNEY JOURNAL',Core.chapter(game.state)===2?'The Sleepy Greenhouse.':'A letter full of secrets.');
+    const items=el('div',undefined,'journal-items');for(const name of ['Wand','Glow spell','Invitation','Satchel','Journal'])items.append(el('span',name,'journal-item'));
+    if(game.state.task2.learnedBloom)items.append(el('span','Bloom spell','journal-item'));
+    const list=el('ul',undefined,'journal-list');
+    for(const [label,done] of Core.checklist(game.state)){const li=el('li',undefined,done?'done':'');li.append(el('span',done?'✓':'○'),document.createTextNode(label));list.append(li);}
+    $('modalBody').append(items,list,el('p',game.state.task2.arrived?'Task One: packed and ready. Task Two: sunlight for sun daisies and marigolds, shade for moonbells, and a drink for all three.':'First entry: I used Glow to read my invitation. The moon on the page led me to my travel chest.','journal-clue'));
+    drawMapInModal();modalButton('Close journal',()=>closeModal(),true,'journalClose');
+  }
+  function openHint(){
+    openModal('hint','A LITTLE HELP',game.state.task2.complete?'The next chapter awaits.':'Try looking here.');
+    $('modalBody').append(el('p',Core.hint(game.state)));
+    const table=el('div',undefined,'control-table');
+    for(const [action,key]of [['Move','Arrow keys / WASD / direction pad'],['Talk or inspect','E / Talk / Use'],['Cast a spell','F / spell button'],['Choose a spell','Q / Spells'],['Read at your pace','Next / Got it'],['Pause','Escape / Menu']])table.append(el('strong',action),el('span',key));
+    $('modalBody').append(table);drawMapInModal();modalButton('Back to exploring',()=>closeModal(),true,'hintClose');
+  }
+  function openMenu(){
+    if(!game)return;
+    persist();openModal('menu','TAKE YOUR TIME','A moment to pause.');
+    $('modalBody').append(el('p','Your adventure is paused. Take your time. The flowers can wait.'),el('p',storageAvailable?'Your progress is saved on this device.':'This browser cannot save progress. Keep this tab open to continue.','fine'));
+    modalButton('Title screen',toTitle,false,'titleBtn');modalButton('Start again',()=>confirmNew(()=>{closeModal(false);selectNew();}),false,'restartBtn');modalButton('Keep playing',()=>closeModal(),true,'resumeBtn');
+  }
+  function confirmNew(onConfirm){
+    openModal('confirm','A FRESH START','Begin a new adventure?');
+    $('modalBody').append(el('p','This replaces your Lantern Trail save, including both chapters. Other games are not affected.'));
+    modalButton('Keep my adventure',()=>closeModal(),false,'cancelNew');
+    modalButton('Start a new story',()=>{
+      game=null;stored=null;
+      try{localStorage.removeItem(Core.SAVE_KEY);}catch(_){}
+      closeModal(false);onConfirm();
+    },true,'confirmNew');
+  }
+  const ICON={sun:'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA5NiA5NiI+PGNpcmNsZSBjeD0iNDgiIGN5PSI0OCIgcj0iMjIiIGZpbGw9IiNlZGJkNTQiLz48ZyBzdHJva2U9IiNjYTk1NDUiIHN0cm9rZS13aWR0aD0iNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIj48cGF0aCBkPSJNNDggNlYxNiIgdHJhbnNmb3JtPSJyb3RhdGUoMCA0OCA0OCkiLz48cGF0aCBkPSJNNDggNlYxNiIgdHJhbnNmb3JtPSJyb3RhdGUoNDUgNDggNDgpIi8+PHBhdGggZD0iTTQ4IDZWMTYiIHRyYW5zZm9ybT0icm90YXRlKDkwIDQ4IDQ4KSIvPjxwYXRoIGQ9Ik00OCA2VjE2IiB0cmFuc2Zvcm09InJvdGF0ZSgxMzUgNDggNDgpIi8+PHBhdGggZD0iTTQ4IDZWMTYiIHRyYW5zZm9ybT0icm90YXRlKDE4MCA0OCA0OCkiLz48cGF0aCBkPSJNNDggNlYxNiIgdHJhbnNmb3JtPSJyb3RhdGUoMjI1IDQ4IDQ4KSIvPjxwYXRoIGQ9Ik00OCA2VjE2IiB0cmFuc2Zvcm09InJvdGF0ZSgyNzAgNDggNDgpIi8+PHBhdGggZD0iTTQ4IDZWMTYiIHRyYW5zZm9ybT0icm90YXRlKDMxNSA0OCA0OCkiLz48L2c+PC9zdmc+',moon:'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA5NiA5NiI+PHBhdGggZD0iTTY2IDEyQTM1IDM1IDAgMSAwIDgxIDY4QTMzIDMzIDAgMCAxIDY2IDEyWiIgZmlsbD0iIzkyODFiMCIvPjxwYXRoIGQ9Ik0yNiAxNkwyOCAyMkwzNCAyNEwyOCAyNkwyNiAzMkwyNCAyNkwxOCAyNEwyNCAyMloiIGZpbGw9IiNlOWM0NjYiLz48L3N2Zz4=',water:'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA5NiA5NiI+PHBhdGggZD0iTTQ4IDdDNDQgMjIgMjEgNDAgMjEgNTdBMjcgMjcgMCAwIDAgNzUgNTdDNzUgNDAgNTMgMjIgNDggN1oiIGZpbGw9IiM3MGI3Y2IiIHN0cm9rZT0iIzRmODU5OSIgc3Ryb2tlLXdpZHRoPSIzIi8+PHBhdGggZD0iTTMyIDU1UTI4IDcwIDQzIDc1IiBmaWxsPSJub25lIiBzdHJva2U9IiNlOGZiZmEiIHN0cm9rZS13aWR0aD0iNSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PC9zdmc+',bloom:'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA5NiA5NiI+PHBhdGggZD0iTTQ4IDU3UTQyIDgwIDQ5IDkyTTQ3IDc1UTIwIDgwIDE1IDU5UTM4IDU3IDQ3IDc1TTQ3IDgyUTc4IDg1IDgwIDY1UTYwIDYzIDQ3IDgyIiBmaWxsPSIjNmU5ZDcyIiBzdHJva2U9IiM0Nzc5NWUiIHN0cm9rZS13aWR0aD0iMyIvPjxlbGxpcHNlIGN4PSI0OCIgY3k9IjI3IiByeD0iMTMiIHJ5PSIyMSIgdHJhbnNmb3JtPSJyb3RhdGUoMCA0OCA0MykiIGZpbGw9IiNlMzkzYjQiIHN0cm9rZT0iI2JiNmU5MSIgc3Ryb2tlLXdpZHRoPSIyIi8+PGVsbGlwc2UgY3g9IjQ4IiBjeT0iMjciIHJ4PSIxMyIgcnk9IjIxIiB0cmFuc2Zvcm09InJvdGF0ZSg3MiA0OCA0MykiIGZpbGw9IiNlZGIwY2EiIHN0cm9rZT0iI2JiNmU5MSIgc3Ryb2tlLXdpZHRoPSIyIi8+PGVsbGlwc2UgY3g9IjQ4IiBjeT0iMjciIHJ4PSIxMyIgcnk9IjIxIiB0cmFuc2Zvcm09InJvdGF0ZSgxNDQgNDggNDMpIiBmaWxsPSIjZTM5M2I0IiBzdHJva2U9IiNiYjZlOTEiIHN0cm9rZS13aWR0aD0iMiIvPjxlbGxpcHNlIGN4PSI0OCIgY3k9IjI3IiByeD0iMTMiIHJ5PSIyMSIgdHJhbnNmb3JtPSJyb3RhdGUoMjE2IDQ4IDQzKSIgZmlsbD0iI2VkYjBjYSIgc3Ryb2tlPSIjYmI2ZTkxIiBzdHJva2Utd2lkdGg9IjIiLz48ZWxsaXBzZSBjeD0iNDgiIGN5PSIyNyIgcng9IjEzIiByeT0iMjEiIHRyYW5zZm9ybT0icm90YXRlKDI4OCA0OCA0MykiIGZpbGw9IiNlMzkzYjQiIHN0cm9rZT0iI2JiNmU5MSIgc3Ryb2tlLXdpZHRoPSIyIi8+PGNpcmNsZSBjeD0iNDgiIGN5PSI0MyIgcj0iMTAiIGZpbGw9IiNlZmNkNzMiLz48Y2lyY2xlIGN4PSI0NSIgY3k9IjQwIiByPSIzIiBmaWxsPSIjZmZmNGM3Ii8+PC9zdmc+'};
+  const PIPE={turn:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABTklEQVR4nO2aPQ4BURSFEbuwAgvQaBWSCUuxAJWoLMBSiESh1ahUGq1dSKhm8kbmR3j3nhHfV80j5Djv/szcp90yYjZfPsL1eJpk14fLrfRzo34vu95vdrn31qtFO5a+lE7sL/w1MEAtQA0GqAWowQC1ADUYoBagBgPUAtRggFqAGgxQC1CDAWoBajBALUANBqgFqOmqBdyv59x6/7IOeZ00x0BmQDb+rhiDeyBJgXD2HzKeJrnzAw8aWQM8jXBJgU9/jIcJjYwAT8wjoGoXwzPCsrpgjaQLFB2Opq8VGVF1mPotpikQK4cto8O9BtTtpuVuF/H3RdDMAIs/M1jgHgF1+ezdDUwNmAwHUaLAsi6Yh+n2eCp9gmvCfYBLnlaZoObvu4Bbpf4kCjzmA+6t6h0jPAcjsl5dZIRiIiS/WbGY8wEAAAAAAAAAAABACU+POk6bET5RbAAAAABJRU5ErkJggg==',straight:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABTUlEQVR4nO2awQ2CMBhGi3ELJ3AODyYmjuIAnownB3AUEhIOzMEEzKGnkmoKKOnfF+V7iQligK+v5S9WC2fE6Xx9hO/3x0O/3bTd4HG77abfrsvq5bP77VKkyudZpT7hryEBdAAaCaAD0EgAHYBGAugANBJAB6CRADoAjQTQAWgkgA5AIwF0ABoJoAPQLF7AmrpwuPztGVsutwIZAbHGj+23ZPG3QBYB4a9COY77Bo0A6wuM9WLTdv1rzvEpQGaBWIP9vtyF0HQEpOo9y1GQvQZMzfW5nwVUBOkANNkFTBW5vyqC739xoc8TA5kGfS+HBY/4HuBcBgF1WQ1OY5802rL3nVMRzCNgbi9a975zGgGMgKGnPWJFCFsSIxobQ7cAHYBGAugANBJAB6CRADoAjQTQAWgkgA5AIwF0ABoJoAPQSAAdgEYC6AA0ixfwBAYaP9Mq0JPJAAAAAElFTkSuQmCC',cross:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABeElEQVR4nO2aO26DQBRFh2h24TZNqizCRaRIXkoW4CpylQV4KUSWXKR14ypVmrTZhaW4GgSIjy3Ne0do7qkwYLhzYD4MVMGIt+3uv/37ZfPaLH/9/I3+b/20apaP9aGzbf/xXuXKl3jIfcClIQF0ABoJoAPQSAAdgEYC6AA0EkAHoJEAOgCNBNABaCSADkAjAXQAGgmgA9BU/dnb0ojUidvT5In+NLgH7gKGCt7f5inCTcBUwcf29RBRfZ7ORbcBxfcCWCMYQvcdYfudoCdx6kVlDoYKNnTOtO7W/XNhWgVyXVXLu8O9DZi7mtZ3ZJ/FNIKX32+T4y5GgBXuAubqs3dvYCogV322HBFGov9N57x3HGCRFR0I3VIg6+eB4htBtwmRe54GEx5Pg253wLE+IBMec7hXgSkR3qPAEMBGsC0hPj5TMUL2T08T+lR2IUgAHYBGAugANBJAB6CRADoAjQTQAWgkgA5AIwF0ABoJoAPQSAAdgKZ4AVfQJFtUr3mg2AAAAABJRU5ErkJggg=='};
+  function icon(name,alt='',className='plant-icon'){const im=el('img',undefined,className);im.src=ICON[name];im.alt=alt;return im;}
+  function openPlan(){
+    openModal('plan','FERN’S PICTURE PLAN','Every flower has a favourite.');
+    $('modalBody').append(el('p','Match the shutters to the flowers below. Then give every bed a drink.'));
+    const cards=el('div',undefined,'plan-beds');
+    Core.BED_NAMES.forEach((name,i)=>{const box=el('div',undefined,'plan-bed');box.append(icon(i===1?'moon':'sun'),el('strong',name),el('span',i===1?'Shade · shutters closed':'Sun · shutters open'),icon('water','Needs water','small-drop'));cards.append(box);});
+    $('modalBody').append(cards,el('p','West bed → middle bed → east bed. The same signs are on the beds and shutters.','fine'));
+    modalButton('Back to the plants',()=>closeModal(),true,'planClose');
+  }
+  function openWater(focusId){
+    const oldScroll=modalKind==='water'?$('modalPanel').scrollTop:0;
+    openModal('water','THE WATER CHANNELS','A drink for every bed.');
+    const t=game.state.task2,flow=Core.waterFlow(t);
+    $('modalBody').append(el('p','Tap A, B and C to turn the pieces. Join the pipe ends, then turn on the tap.'));
+    const grid=el('div',undefined,'water-grid');grid.setAttribute('aria-label','Three movable pipe pieces connecting a tap to three plant beds');
+    const tiles=Core.channelTiles(t),at=new Map(tiles.map(o=>[`${o.x},${o.y}`,o]));
+    for(let y=0;y<4;y++)for(let x=0;x<3;x++){
+      const tile=at.get(`${x},${y}`),cell=el('div',undefined,'water-cell');grid.append(cell);
+      if(!tile){cell.classList.add('empty');continue;}
+      if(tile.kind==='source'){
+        const b=el('button',t.waterOn?'Tap ON':'Tap OFF','tap-switch');b.id='waterTap';b.disabled=t.learnedBloom;b.setAttribute('aria-pressed',String(t.waterOn));
+        b.prepend(icon('water','', 'small-drop'));b.addEventListener('click',()=>{game.toggleWater();persist();refresh();openWater('waterTap');});cell.append(b);continue;
+      }
+      if(tile.kind==='bed'){
+        const b=el('div',undefined,'pipe-bed '+(flow.wet[tile.bed]?'wet':''));b.id='waterBed'+tile.bed;
+        b.append(icon(tile.bed===1?'moon':'sun'),el('strong',Core.BED_NAMES[tile.bed]),el('span',flow.wet[tile.bed]?'Water reached this bed':'This bed is dry'));cell.append(b);continue;
+      }
+      const interactive=tile.index!==undefined,b=el(interactive?'button':'div',undefined,'pipe-tile '+(flow.reached.includes(`${x},${y}`)?'flowing':''));
+      const im=el('img');im.src=PIPE[tile.kind];im.alt='';
+      if(interactive){
+        const name='ABC'[tile.index];b.id='pipe'+name;b.disabled=t.learnedBloom;b.setAttribute('aria-label',`Turn pipe ${name}. Open ends: ${tile.ports.map(d=>['up','right','down','left'][d]).join(' and ')}.`);
+        im.style.transform=`rotate(${t.channels[tile.index]*90}deg)`;b.append(im,el('span',name,'pipe-letter'));
+        b.addEventListener('click',()=>{game.rotateChannel(tile.index);persist();refresh();openWater('pipe'+name);});
+      }else b.append(im);
+      cell.append(b);
+    }
+    const count=flow.wet.filter(Boolean).length;
+    const status=el('p',`${count} of 3 beds have water.`,'water-status');status.id='waterStatus';status.setAttribute('role','status');
+    $('modalBody').append(grid,status);
+    if(count===3)$('modalBody').append(el('p',Core.allAwake(game.state)?'Every bed has the right light and water. Tell Fern the good news.':'The water is right. Now check the shutters for each bed.','water-success'));
+    modalButton('Need a hint?',openHint,false,'waterHint');modalButton('Back to the greenhouse',()=>closeModal(),true,'waterClose');
+    $('modalPanel').scrollTop=oldScroll;if(focusId)$(focusId)?.focus({preventScroll:true});
+  }
+  function openSpells(){
+    if(!game||!Core.hasGlow(game.state))return;
+    openModal('spells','YOUR SPELLS','A little magic.');
+    const row=el('div',undefined,'spell-options');
+    for(const [name,title,description] of [['glow','Glow','Lights lanterns and reveals hidden writing.'],['bloom','Bloom','Wakes special flowers and vines.']]){
+      const locked=name==='bloom'&&!game.state.task2.learnedBloom,b=el('button',undefined,'spell-choice');b.id='choose-'+name;b.disabled=locked;b.setAttribute('aria-pressed',String(game.state.spell===name));
+      b.append(icon(name==='glow'?'sun':'bloom'),el('strong',title),el('span',locked?'Help Fern in the greenhouse to learn this spell.':description));
+      b.addEventListener('click',()=>{game.chooseSpell(name);persist();refresh();closeModal();toast(title+' is ready.');});row.append(b);
+    }
+    $('modalBody').append(row);modalButton('Back to exploring',()=>closeModal(),true,'spellsClose');
+  }
+  // Navigation never starts or moves the player behind story screens.
+  $('newBtn').addEventListener('click',()=>{if(stored)confirmNew(selectNew);else selectNew();});
+  $('continueBtn').addEventListener('click',()=>{if(stored){game=new Core.Game(stored.character,stored);show('play');persist();}});
+  $('selectionBack').addEventListener('click',toTitle);
+  document.querySelectorAll('[data-character]').forEach(b=>b.addEventListener('click',()=>chooseCharacter(b.dataset.character)));
+  $('selectionNext').addEventListener('click',begin);$('storyNext').addEventListener('click',nextStory);$('storyBack').addEventListener('click',previousStory);
+  $('useBtn').addEventListener('click',interact);$('glowBtn').addEventListener('click',cast);
+  $('spellsBtn').addEventListener('click',openSpells);
+  $('journalBtn').addEventListener('click',openJournal);$('helpBtn').addEventListener('click',openHint);$('menuBtn').addEventListener('click',openMenu);
+  const pointerDirection=button=>[...pointerKeys.values()].includes(button.dataset.key);
+  document.querySelectorAll('.move').forEach(button=>{
+    button.addEventListener('pointerdown',e=>{
+      if(scene!=='play'||modalKind)return;e.preventDefault();pointerKeys.set(e.pointerId,button.dataset.key);button.classList.add('is-held');
+      try{button.setPointerCapture(e.pointerId);}catch(_){}
+    });
+    const stop=e=>{e.preventDefault();pointerKeys.delete(e.pointerId);button.classList.toggle('is-held',pointerDirection(button));};
+    for(const type of ['pointerup','pointercancel','lostpointercapture'])button.addEventListener(type,stop);
+    button.addEventListener('contextmenu',e=>e.preventDefault());
+  });
+  document.addEventListener('keydown',e=>{
+    const key=e.key.toLowerCase();
+    if(modalKind){
+      if(key==='escape'){e.preventDefault();closeModal();return;}
+      if(key==='tab'){
+        const focusables=[...$('modal').querySelectorAll('button:not(:disabled),[tabindex="0"]')];
+        const first=focusables[0],last=focusables.at(-1);
+        if(e.shiftKey&&(document.activeElement===first||document.activeElement===$('modalPanel'))){e.preventDefault();last?.focus();}
+        else if(!e.shiftKey&&(document.activeElement===last||document.activeElement===$('modalPanel'))){e.preventDefault();first?.focus();}
+      }
+      return;
+    }
+    if(scene==='story'&&!e.repeat&&(key==='enter'||key===' ')){
+      // Let focused buttons handle their own native activation exactly once.
+      if(e.target.tagName!=='BUTTON'){e.preventDefault();nextStory();}return;
+    }
+    if(scene!=='play')return;
+    if(directionKeys[key]){e.preventDefault();keySet.add(key);return;}
+    if(e.repeat)return;
+    if(key==='e'){e.preventDefault();interact();}
+    if(key==='f'){e.preventDefault();cast();}
+    if(key==='j'){e.preventDefault();openJournal();}
+    if(key==='q'){e.preventDefault();openSpells();}
+    if(key==='escape'){e.preventDefault();openMenu();}
+  });
+  document.addEventListener('keyup',e=>keySet.delete(e.key.toLowerCase()));
+  window.addEventListener('blur',clearInput);
+  document.addEventListener('visibilitychange',()=>{clearInput();if(document.hidden&&game)persist();});
+  window.addEventListener('pagehide',()=>{clearInput();if(game)persist();});
+  window.addEventListener('resize',()=>renderer.resize());
+  if('ResizeObserver'in window)new ResizeObserver(()=>renderer.resize()).observe($('stage'));
+  function loop(now){
+    const dt=Math.min(.05,Math.max(0,(now-lastFrame)/1000));lastFrame=now;
+    if(scene==='play'&&game){
+      if(!modalKind&&!document.hidden){
+        const directions=new Set([...keySet].map(k=>directionKeys[k]));for(const d of pointerKeys.values())directions.add(d);
+        game.move((directions.has('right')?1:0)-(directions.has('left')?1:0),(directions.has('down')?1:0)-(directions.has('up')?1:0),dt);
+        if(game.state.distance!==lastSaveDistance && now-lastSaveTime>2200)persist();
+      }
+      renderer.render(game,reducedMotion?0:now/1000);refreshPrompt();
+      if(now>toastUntil)$('toast').hidden=true;
+    }
+    requestAnimationFrame(loop);
+  }
+  async function preload(){
+    let count=0;$('loadProgress').max=Object.keys(ART).length;
+    await Promise.all(Object.values(ART).map(src=>new Promise(resolve=>{
+      const img=new Image();let done=false;
+      const finish=failed=>{if(done)return;done=true;clearTimeout(timer);if(failed)loadingFailures++;$('loadProgress').value=++count;$('loadText').textContent=`Opening illustrations · ${count} of ${Object.keys(ART).length}`;resolve();};
+      const timer=setTimeout(()=>finish(true),9000);
+      img.onload=()=>finish(false);img.onerror=()=>finish(true);img.src=src;
+    })));
+    await window.FairyAssets.ready;loadingFailures+=window.FairyAssets.failures;
+    toTitle();requestAnimationFrame(loop);
+  }
+  // Read-only diagnostics: used by tests, never used to bypass gameplay.
+  window.fairyHighDebug=Object.freeze({getState:()=>({scene,modal:modalKind,storyIndex,state:game?.snapshot()||null,objective:game?Core.objective(game.state):null,nearby:game?.nearby?.id||null,camera:{...renderer.camera},viewport:{...renderer.viewport},loadingFailures}),build:'lantern-trail-task-two-local'});
+  preload();
+})();
+
+</script>
+<script>
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-const CACHE='fairy-high-v7';
+const CACHE='fairy-high-v8';
 const ASSETS=['./','./index.html','./manifest.webmanifest'];
 
 self.addEventListener('install',event=>{
